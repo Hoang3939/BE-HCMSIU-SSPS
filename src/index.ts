@@ -18,6 +18,7 @@ import * as studentRoutes from './routes/students.js';
 
 dotenv.config();
 
+// ====== CẤU HÌNH CƠ BẢN ======
 const app = express();
 const PORT = process.env.PORT || 3001;
 
