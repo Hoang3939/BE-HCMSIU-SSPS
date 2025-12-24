@@ -8,7 +8,8 @@ dotenv.config();
 
 // ====== CẤU HÌNH CƠ BẢN ======
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+// Mặc định 4000 để tránh trùng với Next.js dev server (3000)
+const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 
 app.use(cors());
@@ -96,6 +97,40 @@ const studentUser: User = {
 };
 
 users.push(adminUser, studentUser);
+
+// Seed 1 printer và một vài job mẫu cho student1 để FE có dữ liệu lịch sử
+const demoPrinter: Printer = {
+  id: createId('printer'),
+  name: 'H6-101',
+  location: 'Tòa H6',
+  ipAddress: '192.168.1.10',
+  isActive: true,
+};
+printers.push(demoPrinter);
+/*
+const demoJobs: PrintJob[] = [
+  {
+    id: createId('job'),
+    userId: studentUser.id,
+    printerId: demoPrinter.id,
+    fileName: 'Bao-cao-do-an.pdf',
+    pages: 20,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2h trước
+    status: 'completed',
+    options: { duplex: true, color: false, paperSize: 'A4' },
+  },
+  {
+    id: createId('job'),
+    userId: studentUser.id,
+    printerId: demoPrinter.id,
+    fileName: 'Bai-tap-lon.docx',
+    pages: 15,
+    createdAt: new Date(Date.now() - 1000 * 60 * 30), // 30 phút trước
+    status: 'pending',
+    options: { duplex: false, color: true, paperSize: 'A4' },
+  },
+];
+jobs.push(...demoJobs);*/
 
 // ====== AUTH MIDDLEWARE ======
 interface AuthPayload {
@@ -286,7 +321,6 @@ app.get('/print-jobs/:id/stream', authRequired, requireRole('student'), (req: Re
   res.write(`data: ${JSON.stringify(job)}\n\n`);
 
   // Demo: không có cơ chế push thật từ CUPS, FE có thể poll lại REST để lấy thông tin mới
-  // Ở môi trường thực tế, bạn có thể tích hợp với queue hoặc WebSocket.
 });
 
 // ====== ROUTES: ADMIN ======
