@@ -14,11 +14,7 @@ async function validateLocationID(locationID: string | null | undefined): Promis
     return; // null is allowed
   }
 
-  const pool = getPool();
-  if (!pool) {
-    throw new Error('Database connection not available');
-  }
-
+  const pool = await getPool();
   const result = await pool
     .request()
     .input('locationID', sql.UniqueIdentifier, locationID)
@@ -33,10 +29,7 @@ async function validateLocationID(locationID: string | null | undefined): Promis
  * Get list of printers with pagination and filters
  */
 export async function getPrinters(params: PrinterQueryParams = {}): Promise<PaginatedResponse<Printer>> {
-  const pool = getPool();
-  if (!pool) {
-    throw new Error('Database connection not available');
-  }
+  const pool = await getPool();
 
   const page = params.page || 1;
   const limit = params.limit || 10;
@@ -126,11 +119,7 @@ export async function getPrinters(params: PrinterQueryParams = {}): Promise<Pagi
  * Get printer details by ID
  */
 export async function getPrinterById(printerId: string): Promise<Printer | null> {
-  const pool = getPool();
-  if (!pool) {
-    throw new Error('Database connection not available');
-  }
-
+  const pool = await getPool();
   const result = await pool
     .request()
     .input('printerId', sql.UniqueIdentifier, printerId)
@@ -163,10 +152,7 @@ export async function getPrinterById(printerId: string): Promise<Printer | null>
  * Create a new printer
  */
 export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
-  const pool = getPool();
-  if (!pool) {
-    throw new Error('Database connection not available');
-  }
+  const pool = await getPool();
 
   // Validate LocationID if provided
   if (data.LocationID) {
@@ -199,10 +185,7 @@ export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
  * Update printer information
  */
 export async function updatePrinter(printerId: string, data: UpdatePrinterDto): Promise<Printer | null> {
-  const pool = getPool();
-  if (!pool) {
-    throw new Error('Database connection not available');
-  }
+  const pool = await getPool();
 
   // Validate LocationID if provided
   if (data.LocationID !== undefined && data.LocationID !== null) {
@@ -276,17 +259,13 @@ export async function updatePrinter(printerId: string, data: UpdatePrinterDto): 
  * Delete a printer
  */
 export async function deletePrinter(printerId: string): Promise<boolean> {
-  const pool = getPool();
-  if (!pool) {
-    throw new Error('Database connection not available');
-  }
-
+  const pool = await getPool();
   const result = await pool
     .request()
     .input('printerId', sql.UniqueIdentifier, printerId)
     .query('DELETE FROM Printers WHERE PrinterID = @printerId');
 
-  return result.rowsAffected[0] > 0;
+  return (result.rowsAffected[0] ?? 0) > 0;
 }
 
 /**

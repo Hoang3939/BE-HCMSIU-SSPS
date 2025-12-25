@@ -42,6 +42,16 @@ let pool: sql.ConnectionPool | null = null;
  */
 export async function connectDB(): Promise<sql.ConnectionPool> {
   try {
+    // Close existing pool if it exists but is not connected
+    if (pool && !pool.connected) {
+      try {
+        await pool.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+      pool = null;
+    }
+
     if (pool && pool.connected) {
       return pool;
     }
@@ -52,7 +62,17 @@ export async function connectDB(): Promise<sql.ConnectionPool> {
     console.log(`[database]: User: ${dbConfig.user}`);
     console.log(`[database]: Connection timeout: ${dbConfig.connectionTimeout}ms`);
 
-    pool = await sql.connect(dbConfig);
+    // Create new connection pool
+    pool = new sql.ConnectionPool(dbConfig);
+    
+    // Handle connection errors
+    pool.on('error', (err) => {
+      console.error('[database]: Connection pool error:', err);
+      // Reset pool on error
+      pool = null;
+    });
+
+    await pool.connect();
     console.log('[database]: Connected to SQL Server successfully');
     
     return pool;
@@ -127,9 +147,28 @@ export async function testConnection(): Promise<boolean> {
 }
 
 /**
- * Get current connection pool
+ * Get current connection pool with automatic reconnection
  */
-export function getPool(): sql.ConnectionPool | null {
+export async function getPool(): Promise<sql.ConnectionPool> {
+  // Check if pool exists and is connected
+  if (pool && pool.connected) {
+    try {
+      // Test connection with a simple query
+      await pool.request().query('SELECT 1');
+      return pool;
+    } catch (error) {
+      // Connection is dead, reset pool
+      console.log('[database]: Connection pool is dead, reconnecting...');
+      pool = null;
+    }
+  }
+
+  // Reconnect if pool is null or not connected
+  if (!pool || !pool.connected) {
+    console.log('[database]: Reconnecting to database...');
+    pool = await connectDB();
+  }
+
   return pool;
 }
 
