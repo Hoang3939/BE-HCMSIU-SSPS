@@ -1,0 +1,15 @@
+/**
+ * Async Handler Middleware
+ * Wrapper để xử lý async functions trong Express routes
+ */
+
+import { Request, Response, NextFunction } from 'express';
+
+type AsyncFunction = (req: Request, res: Response, next: NextFunction) => Promise<any>;
+
+export function asyncHandler(fn: AsyncFunction) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
