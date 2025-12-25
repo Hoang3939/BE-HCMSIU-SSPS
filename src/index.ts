@@ -8,6 +8,7 @@ import { connectDB, testConnection, closeDB } from './config/database.js';
 import printerRoutes from './routes/admin/printerRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
+import userRouter from './routes/user.js';
 
 dotenv.config();
 
@@ -300,6 +301,11 @@ app.get('/health', async (req: Request, res: Response) => {
 app.use(errorHandler);
 
 // Start server and connect to database
+// Routes
+// TODO: Thêm middleware xác thực khi có: app.use('/admin/users', authRequired, userRouter);
+app.use('/admin/users', userRouter);
+
+// Khởi động server và kết nối database
 async function startServer() {
   try {
     // Connect to database
