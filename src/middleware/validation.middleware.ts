@@ -13,11 +13,11 @@ import { BadRequestError } from '../errors/AppError.js';
 export const validate = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    const errorMessages = errors.array().map((err) => ({
+    const errorMessages = errors.array().map((err: any) => ({
       field: err.type === 'field' ? err.path : 'unknown',
       message: err.msg,
     }));
-    throw new BadRequestError(`Validation failed: ${errorMessages.map((e) => e.message).join(', ')}`);
+    throw new BadRequestError(`Validation failed: ${errorMessages.map((e: any) => e.message).join(', ')}`);
   }
   next();
 };
