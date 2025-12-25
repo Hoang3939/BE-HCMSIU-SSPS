@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-// Validate các biến môi trường bắt buộc
+// Validate required environment variables
 const requiredEnvVars = ['DB_SERVER', 'DB_DATABASE', 'DB_USER', 'DB_PASSWORD'];
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
@@ -11,17 +11,20 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
-// Cấu hình kết nối SQL Server
+// SQL Server connection configuration
 const dbConfig: sql.config = {
   server: process.env.DB_SERVER!,
   database: process.env.DB_DATABASE!,
   user: process.env.DB_USER!,
   password: process.env.DB_PASSWORD!,
   port: parseInt(process.env.DB_PORT || '1433'),
+  connectionTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT || '60000'), // 60 seconds
+  requestTimeout: parseInt(process.env.DB_REQUEST_TIMEOUT || '30000'), // 30 seconds
   options: {
     encrypt: process.env.DB_ENCRYPT === 'true',
     trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE !== 'false',
     enableArithAbort: true,
+    connectTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT || '60000'), // Additional connectTimeout
   },
   pool: {
     max: 10,
@@ -30,11 +33,11 @@ const dbConfig: sql.config = {
   },
 };
 
-// Tạo connection pool
+// Create connection pool
 let pool: sql.ConnectionPool | null = null;
 
 /**
- * Kết nối đến database
+ * Connect to database
  * @returns Connection pool
  */
 export async function connectDB(): Promise<sql.ConnectionPool> {
@@ -43,20 +46,57 @@ export async function connectDB(): Promise<sql.ConnectionPool> {
       return pool;
     }
 
+    console.log('[database]: Attempting to connect to database...');
+    console.log(`[database]: Server: ${dbConfig.server}:${dbConfig.port}`);
+    console.log(`[database]: Database: ${dbConfig.database}`);
+    console.log(`[database]: User: ${dbConfig.user}`);
+    console.log(`[database]: Connection timeout: ${dbConfig.connectionTimeout}ms`);
+
     pool = await sql.connect(dbConfig);
     console.log('[database]: Connected to SQL Server successfully');
-    console.log(`[database]: Server: ${dbConfig.server}`);
-    console.log(`[database]: Database: ${dbConfig.database}`);
     
     return pool;
-  } catch (error) {
-    console.error('[database]: Error connecting to database:', error);
+  } catch (error: any) {
+    console.error('[database]: Database connection error:', error.message || error);
+    
+    if (error.code === 'ESOCKET' || error.code === 'ETIMEOUT') {
+      console.error('\n[database]: Connection Error Diagnosis:');
+      console.error('═══════════════════════════════════════════════════════════');
+      console.error(`[database]: Connecting to: ${dbConfig.server}:${dbConfig.port}`);
+      console.error(`[database]: Database: ${dbConfig.database}`);
+      console.error(`[database]: User: ${dbConfig.user}`);
+      console.error('\n[database]: Possible causes:');
+      console.error('  1. SQL Server is not running or unavailable');
+      console.error('  2. Firewall is blocking port 1433');
+      console.error('  3. SQL Server TCP/IP protocol is not enabled');
+      console.error('  4. Incorrect IP address or port');
+      console.error('  5. SQL Server does not allow remote connections');
+      console.error('  6. Network or VPN issues');
+      console.error('\n[database]: Troubleshooting steps:');
+      console.error('  1. Check if SQL Server is running:');
+      console.error('     - Open SQL Server Configuration Manager');
+      console.error('     - Verify SQL Server Services are running');
+      console.error('  2. Check TCP/IP Protocol:');
+      console.error('     - SQL Server Configuration Manager > SQL Server Network Configuration');
+      console.error('     - Enable TCP/IP and restart SQL Server');
+      console.error('  3. Check Firewall:');
+      console.error('     - Allow port 1433 in Windows Firewall');
+      console.error('     - Or temporarily disable firewall for testing');
+      console.error('  4. Check network connectivity:');
+      console.error(`     - Run: ping ${dbConfig.server}`);
+      console.error(`     - Run: Test-NetConnection -ComputerName ${dbConfig.server} -Port ${dbConfig.port}`);
+      console.error('  5. Check SQL Server Authentication:');
+      console.error('     - Ensure SQL Server Authentication is enabled');
+      console.error('     - Verify sa account is activated');
+      console.error('═══════════════════════════════════════════════════════════\n');
+    }
+    
     throw error;
   }
 }
 
 /**
- * Đóng kết nối database
+ * Close database connection
  */
 export async function closeDB(): Promise<void> {
   try {
@@ -72,7 +112,7 @@ export async function closeDB(): Promise<void> {
 }
 
 /**
- * Test kết nối database
+ * Test database connection
  */
 export async function testConnection(): Promise<boolean> {
   try {
@@ -87,7 +127,7 @@ export async function testConnection(): Promise<boolean> {
 }
 
 /**
- * Lấy connection pool hiện tại
+ * Get current connection pool
  */
 export function getPool(): sql.ConnectionPool | null {
   return pool;
