@@ -1,24 +1,27 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import swaggerJsDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
 import printerRoutes from './routes/admin/printerRoutes.js';
+import authRoutes from './routes/auth.routes.js';
+import { errorHandler } from './middleware/errorHandler.middleware.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Cấu hình CORS cho Frontend
+// Configure CORS for Frontend
 const getAllowedOrigins = (): string | string[] => {
   const frontendUrl = process.env.FRONTEND_URL;
   if (frontendUrl) {
-    // Hỗ trợ nhiều origins cách nhau bởi dấu phẩy
+    // Support multiple origins separated by comma
     return frontendUrl.includes(',') ? frontendUrl.split(',').map(url => url.trim()) : frontendUrl;
   }
-  // Mặc định cho development: Next.js thường chạy trên port 3000
+  // Default for development: Next.js usually runs on port 3000
   return 'http://localhost:3000';
 };
 
@@ -33,8 +36,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 console.log(`[cors]: Allowed origins: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin}`);
 app.use(express.json());
+app.use(cookieParser());
 
-// Cập nhật Swagger dùng PORT từ môi trường
+// Configure Swagger using PORT from environment
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -249,11 +253,21 @@ const swaggerOptions = {
               description: 'Chi tiết lỗi',
             },
           },
+      description: 'API documentation for HCMSIU-SSPS printing management system',
+    },
+    servers: [{ url: `http://localhost:${PORT}` }],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
         },
       },
     },
   },
   apis: ['./src/index.ts', './src/routes/**/*.ts', './src/controllers/**/*.ts'],
+  apis: ['./src/routes/*.ts', './src/index.ts'],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
@@ -261,8 +275,21 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // API Routes
 app.use('/api/admin/printers', printerRoutes);
+app.use('/api/auth', authRoutes);
 
 // Health check endpoint
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *       503:
+ *         description: Server is unhealthy
+ */
 app.get('/health', async (req: Request, res: Response) => {
   const dbStatus = await testConnection();
   res.status(dbStatus ? 200 : 503).json({
@@ -272,14 +299,17 @@ app.get('/health', async (req: Request, res: Response) => {
   });
 });
 
-// Khởi động server và kết nối database
+// Error Handler Middleware (must be placed after all routes)
+app.use(errorHandler);
+
+// Start server and connect to database
 async function startServer() {
   try {
-    // Kết nối database
+    // Connect to database
     await connectDB();
     await testConnection();
 
-    // Khởi động server
+    // Start server
     app.listen(PORT, () => {
       console.log(`[server]: Server is running at http://localhost:${PORT}`);
       console.log(`[swagger]: Docs available at http://localhost:${PORT}/api-docs`);
@@ -291,7 +321,7 @@ async function startServer() {
   }
 }
 
-// Xử lý graceful shutdown
+// Handle graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n[server]: Shutting down gracefully...');
   await closeDB();

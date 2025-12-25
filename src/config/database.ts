@@ -147,7 +147,11 @@ export async function testConnection(): Promise<boolean> {
 }
 
 /**
+<<<<<<< HEAD
  * Get current connection pool with automatic reconnection
+=======
+ * Get current connection pool
+>>>>>>> 2979dbb (feat: implement authentication system with JWT tokens)
  */
 export async function getPool(): Promise<sql.ConnectionPool> {
   // Check if pool exists and is connected
