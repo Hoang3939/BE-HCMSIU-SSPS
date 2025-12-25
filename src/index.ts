@@ -8,9 +8,29 @@ import { connectDB, testConnection, closeDB } from './config/database.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// Cấu hình CORS cho Frontend
+const getAllowedOrigins = (): string | string[] => {
+  const frontendUrl = process.env.FRONTEND_URL;
+  if (frontendUrl) {
+    // Hỗ trợ nhiều origins cách nhau bởi dấu phẩy
+    return frontendUrl.includes(',') ? frontendUrl.split(',').map(url => url.trim()) : frontendUrl;
+  }
+  // Mặc định cho development: Next.js thường chạy trên port 3000
+  return 'http://localhost:3000';
+};
+
+const corsOptions = {
+  origin: getAllowedOrigins(),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+};
+
+app.use(cors(corsOptions));
+console.log(`[cors]: Allowed origins: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin}`);
 app.use(express.json());
 
 // Cập nhật Swagger dùng PORT từ môi trường
