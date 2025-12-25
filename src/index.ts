@@ -4,6 +4,7 @@ import swaggerJsDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
+import printerRoutes from './routes/admin/printerRoutes.js';
 
 dotenv.config();
 
@@ -40,14 +41,226 @@ const swaggerOptions = {
     info: {
       title: 'BE-HCMSIU-SSPS API',
       version: '1.0.0',
+      description: 'API cho hệ thống dịch vụ in ấn thông minh tại HCMIU',
     },
     servers: [{ url: `http://localhost:${PORT}` }],
+    components: {
+      schemas: {
+        Printer: {
+          type: 'object',
+          properties: {
+            PrinterID: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID duy nhất của máy in',
+            },
+            Name: {
+              type: 'string',
+              description: 'Tên máy in',
+              example: 'Máy in H6-101',
+            },
+            Brand: {
+              type: 'string',
+              nullable: true,
+              description: 'Thương hiệu máy in',
+              example: 'HP',
+            },
+            Model: {
+              type: 'string',
+              nullable: true,
+              description: 'Model máy in',
+              example: 'LaserJet Pro',
+            },
+            Description: {
+              type: 'string',
+              nullable: true,
+              description: 'Mô tả máy in',
+            },
+            Status: {
+              type: 'string',
+              enum: ['AVAILABLE', 'BUSY', 'OFFLINE', 'MAINTENANCE', 'ERROR'],
+              description: 'Trạng thái máy in',
+              example: 'AVAILABLE',
+            },
+            IPAddress: {
+              type: 'string',
+              nullable: true,
+              description: 'Địa chỉ IP của máy in',
+              example: '192.168.1.100',
+            },
+            CUPSPrinterName: {
+              type: 'string',
+              nullable: true,
+              description: 'Tên máy in trong CUPS',
+              example: 'printer-h6-101',
+            },
+            LocationID: {
+              type: 'string',
+              format: 'uuid',
+              nullable: true,
+              description: 'ID vị trí đặt máy in',
+            },
+            IsActive: {
+              type: 'boolean',
+              description: 'Trạng thái hoạt động',
+              example: true,
+            },
+            CreatedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Thời gian tạo',
+            },
+            UpdatedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Thời gian cập nhật cuối',
+            },
+          },
+        },
+        CreatePrinterDto: {
+          type: 'object',
+          required: ['Name'],
+          properties: {
+            Name: {
+              type: 'string',
+              description: 'Tên máy in (bắt buộc)',
+              example: 'Máy in H6-101',
+            },
+            Brand: {
+              type: 'string',
+              description: 'Thương hiệu máy in',
+              example: 'HP',
+            },
+            Model: {
+              type: 'string',
+              description: 'Model máy in',
+              example: 'LaserJet Pro',
+            },
+            Description: {
+              type: 'string',
+              description: 'Mô tả máy in',
+            },
+            Status: {
+              type: 'string',
+              enum: ['AVAILABLE', 'BUSY', 'OFFLINE', 'MAINTENANCE', 'ERROR'],
+              description: 'Trạng thái máy in (mặc định: OFFLINE)',
+              example: 'OFFLINE',
+            },
+            IPAddress: {
+              type: 'string',
+              description: 'Địa chỉ IP của máy in',
+              example: '192.168.1.100',
+            },
+            CUPSPrinterName: {
+              type: 'string',
+              description: 'Tên máy in trong CUPS',
+              example: 'printer-h6-101',
+            },
+            LocationID: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID vị trí đặt máy in',
+            },
+            IsActive: {
+              type: 'boolean',
+              description: 'Trạng thái hoạt động (mặc định: true)',
+              example: true,
+            },
+          },
+        },
+        UpdatePrinterDto: {
+          type: 'object',
+          properties: {
+            Name: {
+              type: 'string',
+              description: 'Tên máy in',
+            },
+            Brand: {
+              type: 'string',
+              description: 'Thương hiệu máy in',
+            },
+            Model: {
+              type: 'string',
+              description: 'Model máy in',
+            },
+            Description: {
+              type: 'string',
+              description: 'Mô tả máy in',
+            },
+            Status: {
+              type: 'string',
+              enum: ['AVAILABLE', 'BUSY', 'OFFLINE', 'MAINTENANCE', 'ERROR'],
+              description: 'Trạng thái máy in',
+            },
+            IPAddress: {
+              type: 'string',
+              description: 'Địa chỉ IP của máy in',
+            },
+            CUPSPrinterName: {
+              type: 'string',
+              description: 'Tên máy in trong CUPS',
+            },
+            LocationID: {
+              type: 'string',
+              format: 'uuid',
+              nullable: true,
+              description: 'ID vị trí đặt máy in',
+            },
+            IsActive: {
+              type: 'boolean',
+              description: 'Trạng thái hoạt động',
+            },
+          },
+        },
+        Pagination: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              description: 'Số trang hiện tại',
+              example: 1,
+            },
+            limit: {
+              type: 'integer',
+              description: 'Số lượng items mỗi trang',
+              example: 10,
+            },
+            total: {
+              type: 'integer',
+              description: 'Tổng số items',
+              example: 50,
+            },
+            totalPages: {
+              type: 'integer',
+              description: 'Tổng số trang',
+              example: 5,
+            },
+          },
+        },
+        Error: {
+          type: 'object',
+          properties: {
+            error: {
+              type: 'string',
+              description: 'Thông báo lỗi',
+            },
+            message: {
+              type: 'string',
+              description: 'Chi tiết lỗi',
+            },
+          },
+        },
+      },
+    },
   },
-  apis: ['./src/index.ts'],
+  apis: ['./src/index.ts', './src/routes/**/*.ts', './src/controllers/**/*.ts'],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
+// API Routes
+app.use('/api/admin/printers', printerRoutes);
 
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
