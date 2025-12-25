@@ -253,10 +253,8 @@ const swaggerOptions = {
               description: 'Chi tiết lỗi',
             },
           },
-      description: 'API documentation for HCMSIU-SSPS printing management system',
-    },
-    servers: [{ url: `http://localhost:${PORT}` }],
-    components: {
+        },
+      },
       securitySchemes: {
         bearerAuth: {
           type: 'http',
@@ -267,7 +265,6 @@ const swaggerOptions = {
     },
   },
   apis: ['./src/index.ts', './src/routes/**/*.ts', './src/controllers/**/*.ts'],
-  apis: ['./src/routes/*.ts', './src/index.ts'],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
