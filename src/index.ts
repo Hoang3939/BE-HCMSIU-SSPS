@@ -5,9 +5,13 @@ import swaggerJsDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
+<<<<<<< HEAD
 import printerRoutes from './routes/admin/printerRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
+=======
+import { authRequired, requireRole } from './middleware/auth.js';
+>>>>>>> 1010e93 (refactor: update auth middleware and user api)
 import userRouter from './routes/user.js';
 
 dotenv.config();
@@ -302,8 +306,7 @@ app.use(errorHandler);
 
 // Start server and connect to database
 // Routes
-// TODO: Thêm middleware xác thực khi có: app.use('/admin/users', authRequired, userRouter);
-app.use('/admin/users', userRouter);
+app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
 
 // Khởi động server và kết nối database
 async function startServer() {

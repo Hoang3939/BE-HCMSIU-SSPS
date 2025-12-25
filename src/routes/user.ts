@@ -18,6 +18,7 @@ const router = Router();
  *     description: |
  *       API này trả về danh sách tất cả người dùng trong hệ thống.
  *       Mỗi người dùng có thông tin về số trang hiện có (balancePages).
+ *       Nếu người dùng không có bản ghi trong PageBalances (ví dụ Admin), balancePages sẽ trả về 0.
  *       Mật khẩu sẽ được ẩn khỏi kết quả trả về.
  *     security:
  *       - bearerAuth: []
@@ -39,7 +40,7 @@ const router = Router();
  *                     properties:
  *                       id:
  *                         type: integer
- *                         description: ID của người dùng
+ *                         description: ID của người dùng (UserID)
  *                         example: 1
  *                       username:
  *                         type: string
@@ -49,24 +50,18 @@ const router = Router();
  *                         type: string
  *                         description: Email của người dùng
  *                         example: "user001@example.com"
- *                       fullName:
+ *                       role:
  *                         type: string
- *                         description: Họ và tên đầy đủ
- *                         example: "Nguyễn Văn A"
+ *                         description: Vai trò của người dùng
+ *                         example: "Student"
+ *                       isActive:
+ *                         type: boolean
+ *                         description: Trạng thái hoạt động của tài khoản
+ *                         example: true
  *                       balancePages:
  *                         type: integer
- *                         description: Số trang hiện có của người dùng
+ *                         description: Số trang hiện có của người dùng (CurrentBalance). Trả về 0 nếu NULL.
  *                         example: 100
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                         description: Thời gian tạo tài khoản
- *                         example: "2024-01-01T00:00:00.000Z"
- *                       updatedAt:
- *                         type: string
- *                         format: date-time
- *                         description: Thời gian cập nhật cuối cùng
- *                         example: "2024-01-01T00:00:00.000Z"
  *       401:
  *         description: Không có quyền truy cập (chưa xác thực)
  *         content:
@@ -104,21 +99,22 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Query để lấy danh sách user, loại bỏ password
-    // Giả sử bảng users có các cột: id, username, email, password, fullName, balancePages, createdAt, updatedAt
+    // Query để lấy danh sách user với LEFT JOIN PageBalances
+    // LEFT JOIN để lấy cả user không có balance (ví dụ Admin)
+    // ISNULL để trả về 0 nếu CurrentBalance là NULL
     const result = await pool
       .request()
       .query(`
         SELECT 
-          id,
-          username,
-          email,
-          fullName,
-          balancePages,
-          createdAt,
-          updatedAt
-        FROM users
-        ORDER BY id ASC
+          u.UserID AS id,
+          u.Username AS username,
+          u.Email AS email,
+          u.Role AS role,
+          u.IsActive AS isActive,
+          ISNULL(pb.CurrentBalance, 0) AS balancePages
+        FROM Users u
+        LEFT JOIN PageBalances pb ON u.UserID = pb.StudentID
+        ORDER BY u.UserID ASC
       `);
 
     return res.status(200).json({
