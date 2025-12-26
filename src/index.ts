@@ -1,18 +1,20 @@
-import express, { type Request, type Response } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import swaggerJsDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import multer from 'multer';
 import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
-<<<<<<< HEAD
 import printerRoutes from './routes/admin/printerRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
-=======
 import { authRequired, requireRole } from './middleware/auth.js';
->>>>>>> 1010e93 (refactor: update auth middleware and user api)
 import userRouter from './routes/user.js';
+import * as documentRoutes from './routes/documents.js';
+import * as printJobRoutes from './routes/printJobs.js';
+import * as printerRoutes from './routes/printers.js';
+import * as studentRoutes from './routes/students.js';
 
 dotenv.config();
 
@@ -34,12 +36,15 @@ const corsOptions = {
   origin: getAllowedOrigins(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'X-Requested-With', 'x-student-id'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
 };
 
 app.use(cors(corsOptions));
-console.log(`[cors]: Allowed origins: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin}`);
+console.log(
+  `[cors]: Allowed origins: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin
+  }`,
+);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -321,6 +326,15 @@ async function startServer() {
       console.log(`[swagger]: Docs available at http://localhost:${PORT}/api-docs`);
       console.log(`[health]: Health check available at http://localhost:${PORT}/health`);
     });
+
+    // Kết nối database (không block server start)
+    try {
+      await connectDB();
+      await testConnection();
+    } catch (dbError) {
+      console.error('[server]: Database connection failed, but server is running:', dbError);
+      console.log('[server]: API endpoints will return 500 if database is not available');
+    }
   } catch (error) {
     console.error('[server]: Failed to start server:', error);
     process.exit(1);
