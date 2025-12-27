@@ -235,8 +235,8 @@ router.post('/', async (req: Request, res: Response) => {
     // Hash password using bcrypt (hàm của nhóm trưởng)
     const hashedPassword = await hashPassword(password);
 
-    // Generate UUID for new user
-    const userID = sql.UniqueIdentifier();
+    // Generate UUID for new user using crypto.randomUUID()
+    const userID = randomUUID();
 
     // Insert user into database
     const pool = await getPool();
@@ -255,26 +255,99 @@ router.post('/', async (req: Request, res: Response) => {
     request.input('PasswordHash', sql.NVarChar(255), hashedPassword);
     request.input('IsActive', sql.Bit, true);
 
-    await request.query(`
-      INSERT INTO Users (UserID, Username, Email, Role, PasswordHash, IsActive, CreatedAt)
-      VALUES (@UserID, @Username, @Email, @Role, @PasswordHash, @IsActive, GETDATE())
-    `);
+    // Execute INSERT query and wait for completion
+    console.log('[user-router]: Attempting to insert user:', {
+      userID,
+      username: normalizedUsername,
+      email: normalizedEmail,
+      role: normalizedRole,
+    });
+
+    let insertResult;
+    try {
+      // Try INSERT without CreatedAt first (if it has DEFAULT constraint)
+      // This matches the pattern used in generate-seed-data.cjs
+      insertResult = await request.query(`
+        INSERT INTO Users (UserID, Username, Email, Role, PasswordHash, IsActive)
+        VALUES (@UserID, @Username, @Email, @Role, @PasswordHash, @IsActive)
+      `);
+      
+      console.log('[user-router]: INSERT result:', {
+        rowsAffected: insertResult.rowsAffected,
+        recordset: insertResult.recordset,
+      });
+    } catch (sqlError: any) {
+      console.error('[user-router]: SQL INSERT error:', sqlError);
+      console.error('[user-router]: SQL error details:', {
+        message: sqlError.message,
+        code: sqlError.code,
+        number: sqlError.number,
+        state: sqlError.state,
+        class: sqlError.class,
+        serverName: sqlError.serverName,
+        procName: sqlError.procName,
+        lineNumber: sqlError.lineNumber,
+      });
+      
+      // If error is about CreatedAt column, try with CreatedAt
+      if (sqlError.message && sqlError.message.includes('CreatedAt')) {
+        console.log('[user-router]: Retrying INSERT with CreatedAt...');
+        try {
+          insertResult = await request.query(`
+            INSERT INTO Users (UserID, Username, Email, Role, PasswordHash, IsActive, CreatedAt)
+            VALUES (@UserID, @Username, @Email, @Role, @PasswordHash, @IsActive, GETDATE())
+          `);
+          console.log('[user-router]: INSERT with CreatedAt succeeded');
+        } catch (retryError: any) {
+          console.error('[user-router]: Retry INSERT also failed:', retryError);
+          throw new Error(`Database error: ${retryError.message || sqlError.message || 'Unknown SQL error'}`);
+        }
+      } else {
+        throw new Error(`Database error: ${sqlError.message || 'Unknown SQL error'}`);
+      }
+    }
+    
+    // Verify that the insert was successful
+    if (!insertResult.rowsAffected || insertResult.rowsAffected[0] === 0) {
+      console.error('[user-router]: INSERT returned 0 rows affected');
+      throw new Error('Failed to insert user into database: No rows affected');
+    }
+
+    console.log('[user-router]: User inserted successfully, fetching created user...');
 
     // Get created user (without password)
-    const result = await pool
-      .request()
-      .input('UserID', sql.UniqueIdentifier, userID)
-      .query(`
-        SELECT 
-          UserID AS id,
-          Username AS username,
-          Email AS email,
-          Role AS role,
-          IsActive AS isActive,
-          CreatedAt AS createdAt
-        FROM Users
-        WHERE UserID = @UserID
-      `);
+    let result;
+    try {
+      result = await pool
+        .request()
+        .input('UserID', sql.UniqueIdentifier, userID)
+        .query(`
+          SELECT 
+            UserID AS id,
+            Username AS username,
+            Email AS email,
+            Role AS role,
+            IsActive AS isActive,
+            CreatedAt AS createdAt
+          FROM Users
+          WHERE UserID = @UserID
+        `);
+      
+      console.log('[user-router]: SELECT result:', {
+        recordCount: result.recordset.length,
+        data: result.recordset[0],
+      });
+    } catch (sqlError: any) {
+      console.error('[user-router]: SQL SELECT error:', sqlError);
+      throw new Error(`Failed to fetch created user: ${sqlError.message || 'Unknown SQL error'}`);
+    }
+
+    if (!result.recordset || result.recordset.length === 0) {
+      console.error('[user-router]: Created user not found after INSERT');
+      throw new Error('User was created but could not be retrieved');
+    }
+
+    console.log('[user-router]: User created successfully:', result.recordset[0]);
 
     return res.status(201).json({
       success: true,
@@ -283,12 +356,25 @@ router.post('/', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('[user-router]: Error creating user:', error);
+    console.error('[user-router]: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     
     if (error instanceof BadRequestError || error instanceof ConflictError) {
       return res.status(error.statusCode).json({
         success: false,
         message: error.message,
       });
+    }
+
+    // Check for SQL errors
+    if (error instanceof Error) {
+      // Check if it's a SQL Server error
+      if (error.message.includes('Database error') || error.message.includes('SQL')) {
+        return res.status(500).json({
+          success: false,
+          message: 'Database error occurred',
+          error: error.message,
+        });
+      }
     }
 
     return res.status(500).json({
