@@ -7,6 +7,7 @@ import { Router } from 'express';
 import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
 import adminPrinterRoutes from './routes/admin/printerRoutes.js';
+import adminDashboardRoutes from './routes/admin/dashboardRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
 import { authRequired, requireRole } from './middleware/auth.js';
@@ -284,6 +285,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // ====== API ROUTES ======
 // Admin routes
 app.use('/api/admin/printers', adminPrinterRoutes);
+app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
 
 // Auth routes

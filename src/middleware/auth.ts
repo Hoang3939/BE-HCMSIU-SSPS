@@ -128,9 +128,9 @@ export const authRequired = (
 /**
  * Middleware kiểm tra quyền: Kiểm tra req.auth.role
  * Nếu role không khớp, trả về 403 Forbidden
- * @param role - Role cần kiểm tra (ví dụ: 'ADMIN')
+ * @param roles - Role(s) cần kiểm tra (ví dụ: 'ADMIN' hoặc ['ADMIN', 'SPSO'])
  */
-export const requireRole = (role: string) => {
+export const requireRole = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.auth) {
       res.status(401).json({
@@ -140,10 +140,10 @@ export const requireRole = (role: string) => {
       return;
     }
 
-    if (req.auth.role !== role) {
+    if (!roles.includes(req.auth.role)) {
       res.status(403).json({
         success: false,
-        message: `Access denied. Required role: ${role}`,
+        message: `Access denied. Required role(s): ${roles.join(', ')}`,
       });
       return;
     }
