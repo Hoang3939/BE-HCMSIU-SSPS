@@ -7,7 +7,7 @@ dotenv.config();
 
 // Interface cho payload của JWT token
 export interface AuthPayload {
-  userId: number;
+  userID: string; // UUID string, not number
   role: string;
 }
 
@@ -60,27 +60,26 @@ export const authRequired = (
       return;
     }
 
-    const token = parts[1];
-
-    // Lấy JWT_SECRET từ environment variable
-    let jwtSecret: string;
-    try {
-      jwtSecret = getJwtSecret();
-    } catch (error) {
-      console.error('[auth-middleware]: JWT_SECRET is not configured');
-      res.status(500).json({
-        success: false,
-        message: 'Server configuration error',
-      });
-      return;
-    }
+    const token = parts[1] as string;
 
     // Verify và decode token
-    // jwtSecret đã được gán từ getJwtSecret(), chắc chắn là string
     try {
-      // @ts-expect-error - jwtSecret đã được kiểm tra và gán từ getJwtSecret() nên chắc chắn là string
-      const decoded = jwt.verify(token, jwtSecret);
-      
+      // Lấy JWT_SECRET từ environment variable
+      const jwtSecretRaw = process.env.JWT_SECRET;
+      if (!jwtSecretRaw) {
+        console.error('[auth-middleware]: JWT_SECRET is not configured');
+        res.status(500).json({
+          success: false,
+          message: 'Server configuration error',
+        });
+        return;
+      }
+      // After the null check, jwtSecretRaw is definitely a string
+      // Verify token với issuer và audience (giống như trong jwt.util.ts)
+      const decoded = jwt.verify(token, jwtSecretRaw, {
+        issuer: 'hcmsiu-ssps',
+        audience: 'hcmsiu-ssps-users',
+      });
       // Kiểm tra type và extract payload
       if (typeof decoded === 'string' || !decoded || typeof decoded !== 'object') {
         res.status(401).json({
@@ -91,8 +90,9 @@ export const authRequired = (
       }
 
       // Type guard để đảm bảo decoded có đủ properties
-      const payload = decoded as JwtPayload;
-      if (!payload.userId || !payload.role) {
+      // JWT token có userID (string UUID), không phải userId (number)
+      const payload = decoded as any; // Use any to access custom fields
+      if (!payload.userID || !payload.role) {
         res.status(401).json({
           success: false,
           message: 'Token payload is missing required fields',
@@ -102,7 +102,7 @@ export const authRequired = (
 
       // Gán thông tin đã decode vào req.auth
       req.auth = {
-        userId: typeof payload.userId === 'number' ? payload.userId : Number(payload.userId),
+        userID: String(payload.userID), // Keep as string UUID
         role: String(payload.role),
       };
 
