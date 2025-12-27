@@ -1,6 +1,12 @@
-import { type Request, type Response } from 'express';
-import { getPool } from '../config/database.js';
-import sql from 'mssql';
+/**
+ * Student Routes
+ * Định nghĩa routes cho module Students
+ */
+
+import { Router } from 'express';
+import { StudentController } from '../controllers/student.controller.js';
+
+const router = Router();
 
 /**
  * @openapi
@@ -34,37 +40,6 @@ import sql from 'mssql';
  *       404:
  *         description: Không tìm thấy số dư
  */
-export async function getUserBalance(req: Request, res: Response) {
-  try {
-    const studentIdHeader = req.header('x-student-id');
-    if (!studentIdHeader) {
-      return res.status(400).json({ message: 'Thiếu header x-student-id' });
-    }
+router.get('/balance', StudentController.getBalance);
 
-    const pool = getPool();
-    if (!pool) {
-      return res.status(500).json({ message: 'Database connection not available' });
-    }
-
-    const result = await pool
-      .request()
-      .input('studentId', sql.UniqueIdentifier, studentIdHeader)
-      .query(`
-        SELECT CurrentBalance as balancePages
-        FROM PageBalances
-        WHERE StudentID = @studentId
-      `);
-
-    if (result.recordset.length === 0) {
-      return res.status(404).json({ message: 'Không tìm thấy số dư tài khoản' });
-    }
-
-    return res.json({
-      balancePages: result.recordset[0].balancePages || 0,
-    });
-  } catch (error) {
-    console.error('Error getting user balance:', error);
-    return res.status(500).json({ message: 'Lỗi server khi lấy số dư' });
-  }
-}
-
+export default router;

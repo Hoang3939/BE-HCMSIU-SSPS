@@ -91,7 +91,7 @@ const router = Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const pool = getPool();
+    const pool = await getPool();
     if (!pool) {
       return res.status(500).json({
         success: false,

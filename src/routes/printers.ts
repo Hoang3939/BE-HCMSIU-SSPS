@@ -41,7 +41,7 @@ import sql from 'mssql';
  */
 export async function getAvailablePrinters(req: Request, res: Response) {
   try {
-    const pool = getPool();
+    const pool = await getPool();
     if (!pool) {
       return res.status(500).json({ message: 'Database connection not available' });
     }

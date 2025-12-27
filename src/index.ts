@@ -3,18 +3,18 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import swaggerJsDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import multer from 'multer';
+import { Router } from 'express';
 import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
-import printerRoutes from './routes/admin/printerRoutes.js';
+import adminPrinterRoutes from './routes/admin/printerRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
 import { authRequired, requireRole } from './middleware/auth.js';
 import userRouter from './routes/user.js';
-import * as documentRoutes from './routes/documents.js';
-import * as printJobRoutes from './routes/printJobs.js';
-import * as printerRoutes from './routes/printers.js';
-import * as studentRoutes from './routes/students.js';
+import documentRoutes from './routes/documents.js';
+import printJobRoutes from './routes/printJobs.js';
+import * as publicPrinterRoutes from './routes/printers.js';
+import studentRoutes from './routes/students.js';
 
 dotenv.config();
 
@@ -281,9 +281,27 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-// API Routes
-app.use('/api/admin/printers', printerRoutes);
+// ====== API ROUTES ======
+// Admin routes
+app.use('/api/admin/printers', adminPrinterRoutes);
+app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
+
+// Auth routes
 app.use('/api/auth', authRoutes);
+
+// Documents routes
+app.use('/api/documents', documentRoutes);
+
+// Print Jobs routes
+app.use('/api/print-jobs', printJobRoutes);
+
+// Public Printers routes
+const publicPrinterRouter = Router();
+publicPrinterRouter.get('/available', publicPrinterRoutes.getAvailablePrinters);
+app.use('/api/printers', publicPrinterRouter);
+
+// Students routes
+app.use('/api/student', studentRoutes);
 
 // Health check endpoint
 /**
@@ -310,11 +328,7 @@ app.get('/health', async (req: Request, res: Response) => {
 // Error Handler Middleware (must be placed after all routes)
 app.use(errorHandler);
 
-// Start server and connect to database
-// Routes
-app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
-
-// Khởi động server và kết nối database
+// ====== SERVER STARTUP ======
 async function startServer() {
   try {
     // Connect to database
@@ -327,15 +341,6 @@ async function startServer() {
       console.log(`[swagger]: Docs available at http://localhost:${PORT}/api-docs`);
       console.log(`[health]: Health check available at http://localhost:${PORT}/health`);
     });
-
-    // Kết nối database (không block server start)
-    try {
-      await connectDB();
-      await testConnection();
-    } catch (dbError) {
-      console.error('[server]: Database connection failed, but server is running:', dbError);
-      console.log('[server]: API endpoints will return 500 if database is not available');
-    }
   } catch (error) {
     console.error('[server]: Failed to start server:', error);
     process.exit(1);
