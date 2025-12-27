@@ -129,15 +129,42 @@ export class DocumentService {
         .input('filePath', sql.NVarChar(sql.MAX), file.path)
         .input('studentId', sql.UniqueIdentifier, studentId)
         .query(`
-          INSERT INTO Documents (DocID, FileName, FileType, FileSize, FilePath, StudentID, CreatedAt)
-          VALUES (@docId, @fileName, @fileType, @fileSize, @filePath, @studentId, GETDATE())
+          INSERT INTO Documents (DocID, FileName, FileType, FileSize, FilePath, StudentID)
+          VALUES (@docId, @fileName, @fileType, @fileSize, @filePath, @studentId)
         `);
     } catch (error) {
+      // Log detailed error for debugging
+      console.error('[DocumentService] Database insert error:', error);
+      console.error('[DocumentService] Error details:', {
+        docId,
+        fileName: originalFileName,
+        fileType,
+        fileSize: file.size,
+        filePath: file.path,
+        studentId,
+      });
+
       // Clean up uploaded file if database insert fails
       if (file.path && fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
       }
-      throw new InternalServerError('Lỗi khi lưu thông tin document vào database');
+
+      // Provide more specific error message
+      let errorMessage = 'Lỗi khi lưu thông tin document vào database';
+      if (error instanceof Error) {
+        const errorMsg = error.message.toLowerCase();
+        if (errorMsg.includes('foreign key') || errorMsg.includes('constraint')) {
+          errorMessage = 'Lỗi: StudentID không hợp lệ hoặc không tồn tại trong database';
+        } else if (errorMsg.includes('duplicate') || errorMsg.includes('unique')) {
+          errorMessage = 'Lỗi: Document ID đã tồn tại (trùng lặp)';
+        } else if (errorMsg.includes('cannot insert')) {
+          errorMessage = `Lỗi database: ${error.message}`;
+        } else {
+          errorMessage = `Lỗi khi lưu thông tin document: ${error.message}`;
+        }
+      }
+
+      throw new InternalServerError(errorMessage);
     }
 
     return {
@@ -282,10 +309,24 @@ export class DocumentService {
         isPdf: true,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.includes('LibreOffice không được cài đặt')) {
-        throw new InternalServerError(
-          'LibreOffice chưa được cài đặt. Vui lòng cài LibreOffice để xem preview file Word/PPT.'
-        );
+      if (error instanceof Error) {
+        if (error.message.includes('LibreOffice không được cài đặt')) {
+          throw new InternalServerError(
+            'LibreOffice chưa được cài đặt. Vui lòng cài LibreOffice để xem preview file Word/PPT.'
+          );
+        } else if (error.message.includes('timeout')) {
+          throw new InternalServerError(
+            'Quá trình convert mất quá nhiều thời gian. Vui lòng thử lại hoặc kiểm tra file có quá lớn không.'
+          );
+        } else if (error.message.includes('exit code 1') || error.message.includes('exit code')) {
+          throw new InternalServerError(
+            'LibreOffice không thể convert file này. Có thể file Word bị lỗi, bị mã hóa, hoặc có vấn đề về định dạng. Vui lòng thử file khác hoặc kiểm tra file có mở được trong Word không.'
+          );
+        } else if (error.message.includes('Không tìm thấy file PDF')) {
+          throw new InternalServerError(
+            'LibreOffice không tạo được file PDF sau khi convert. Vui lòng kiểm tra file có hợp lệ không.'
+          );
+        }
       }
       throw new InternalServerError(
         `Không thể convert file sang PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
