@@ -11,7 +11,7 @@ const router = Router();
 
 /**
  * @openapi
- * /admin/users:
+ * /api/admin/users:
  *   get:
  *     tags:
  *       - Admin - User Management
@@ -34,6 +34,9 @@ const router = Router();
  *                 success:
  *                   type: boolean
  *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Users retrieved successfully"
  *                 data:
  *                   type: array
  *                   items:
@@ -98,6 +101,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
+      message: 'Users retrieved successfully',
       data: result.recordset,
     });
   } catch (error) {
@@ -112,7 +116,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/users:
+ * /api/admin/users:
  *   post:
  *     tags:
  *       - Admin - User Management
@@ -387,7 +391,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/users/{id}:
+ * /api/admin/users/{id}:
  *   put:
  *     tags:
  *       - Admin - User Management
@@ -453,8 +457,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const { username, email, password, role, isActive } = req.body;
 
-    // Check if user exists
-    const existingUser = await UserModel.findByUserID(userID);
+    // Check if user exists (for admin operations, include inactive users)
+    const existingUser = await UserModel.findByUserIDForAdmin(userID);
     if (!existingUser) {
       throw new NotFoundError('Không tìm thấy người dùng');
     }
@@ -600,7 +604,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/users/{id}:
+ * /api/admin/users/{id}:
  *   delete:
  *     tags:
  *       - Admin - User Management
@@ -641,8 +645,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const userID = validateUUID(req.params.id, 'UserID');
 
-    // Check if user exists
-    const existingUser = await UserModel.findByUserID(userID);
+    // Check if user exists (for admin operations, include inactive users)
+    const existingUser = await UserModel.findByUserIDForAdmin(userID);
     if (!existingUser) {
       throw new NotFoundError('Không tìm thấy người dùng');
     }

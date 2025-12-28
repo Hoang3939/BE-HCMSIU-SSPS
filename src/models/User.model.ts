@@ -148,6 +148,49 @@ export class UserModel {
   }
 
   /**
+   * Find user by userID (for admin operations - includes inactive users)
+   */
+  static async findByUserIDForAdmin(userID: string): Promise<UserData | null> {
+    const pool = await getPool();
+    if (!pool) {
+      throw new Error('Database connection not available');
+    }
+
+    const request = pool.request();
+    const result = await request
+      .input('UserID', sql.UniqueIdentifier, userID)
+      .query(`
+        SELECT 
+          UserID,
+          Username,
+          Email,
+          Role,
+          PasswordHash,
+          CreatedAt,
+          LastLogin,
+          IsActive
+        FROM Users
+        WHERE UserID = @UserID
+      `);
+
+    if (result.recordset.length === 0) {
+      return null;
+    }
+
+    const row = result.recordset[0];
+    return {
+      userID: row.UserID,
+      username: row.Username,
+      email: row.Email,
+      role: row.Role,
+      passwordHash: row.PasswordHash || undefined,
+      createdAt: new Date(row.CreatedAt),
+      lastLogin: row.LastLogin ? new Date(row.LastLogin) : undefined,
+      isActive: row.IsActive,
+    };
+  }
+
+  /**
    * Update LastLogin
    */
   static async updateLastLogin(userID: string): Promise<void> {

@@ -329,7 +329,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/api/admin/map', adminMapRoutes);
-app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
+app.use('/api/admin/users', authRequired, requireRole('ADMIN'), userRouter);
 
 // Auth routes
 app.use('/api/auth', authRoutes);

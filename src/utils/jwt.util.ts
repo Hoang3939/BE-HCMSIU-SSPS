@@ -134,6 +134,14 @@ export function verifyRefreshToken(token: string): JWTPayload {
     
     return decoded;
   } catch (error) {
+    // Log error for debugging
+    console.error('[jwt-util]: Refresh token verification failed:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorType: error instanceof jwt.TokenExpiredError ? 'TokenExpiredError' : 
+                 error instanceof jwt.JsonWebTokenError ? 'JsonWebTokenError' : 
+                 'Unknown',
+    });
+    
     if (error instanceof jwt.TokenExpiredError) {
       throw new Error('Refresh token expired');
     }

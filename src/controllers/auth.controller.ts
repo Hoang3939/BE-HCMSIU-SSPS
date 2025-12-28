@@ -8,7 +8,7 @@ import { AuthService } from '../services/auth.service.js';
 import { asyncHandler } from '../middleware/asyncHandler.middleware.js';
 import { ApiResponse } from '../types/common.types.js';
 import { LoginResponse, RefreshTokenResponse } from '../types/auth.types.js';
-import { BadRequestError, UnauthorizedError } from '../errors/AppError.js';
+import { BadRequestError, UnauthorizedError, NotFoundError } from '../errors/AppError.js';
 
 export class AuthController {
   /**
@@ -30,9 +30,17 @@ export class AuthController {
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // 'lax' cho development, 'strict' cho production
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      path: '/api/auth',
+      path: '/', // Set path to root để cookie được gửi với tất cả requests
+    });
+    
+    console.log('[auth-controller]: Refresh token set in cookie:', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      path: '/',
+      maxAge: '7 days',
     });
 
     const response: ApiResponse<LoginResponse> = {
@@ -50,17 +58,27 @@ export class AuthController {
   static refreshToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     // Get refresh token from cookie (preferred) or body
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    
+    console.log('[auth-controller]: Refresh token request received:', {
+      hasCookie: !!req.cookies?.refreshToken,
+      hasBodyToken: !!req.body?.refreshToken,
+      cookieKeys: req.cookies ? Object.keys(req.cookies) : [],
+      allCookies: req.cookies,
+    });
 
     if (!refreshToken) {
+      console.error('[auth-controller]: Refresh token not found in cookie or body');
       // Clear cookie if it exists but is empty
       res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/api/auth',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/',
       });
       throw new BadRequestError('Refresh token is required');
     }
+
+    console.log('[auth-controller]: Refresh token found, length:', refreshToken.length);
 
     try {
       const result: RefreshTokenResponse = await AuthService.refreshToken(refreshToken);
@@ -71,6 +89,7 @@ export class AuthController {
         data: result,
       };
 
+      console.log('[auth-controller]: Token refreshed successfully');
       res.status(200).json(response);
     } catch (error) {
       // If refresh token is invalid/expired, clear the cookie
@@ -78,8 +97,8 @@ export class AuthController {
         res.clearCookie('refreshToken', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
-          path: '/api/auth',
+          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+          path: '/',
         });
       }
       // Re-throw to let error handler process it
@@ -102,8 +121,8 @@ export class AuthController {
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/auth',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      path: '/',
     });
 
     const response: ApiResponse = {
