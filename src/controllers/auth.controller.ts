@@ -8,7 +8,7 @@ import { AuthService } from '../services/auth.service.js';
 import { asyncHandler } from '../middleware/asyncHandler.middleware.js';
 import { ApiResponse } from '../types/common.types.js';
 import { LoginResponse, RefreshTokenResponse } from '../types/auth.types.js';
-import { BadRequestError } from '../errors/AppError.js';
+import { BadRequestError, UnauthorizedError } from '../errors/AppError.js';
 
 export class AuthController {
   /**
@@ -48,22 +48,43 @@ export class AuthController {
    * POST /api/auth/refresh-token
    */
   static refreshToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    // Get refresh token from cookie or body
+    // Get refresh token from cookie (preferred) or body
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
     if (!refreshToken) {
+      // Clear cookie if it exists but is empty
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/api/auth',
+      });
       throw new BadRequestError('Refresh token is required');
     }
 
-    const result: RefreshTokenResponse = await AuthService.refreshToken(refreshToken);
+    try {
+      const result: RefreshTokenResponse = await AuthService.refreshToken(refreshToken);
 
-    const response: ApiResponse<RefreshTokenResponse> = {
-      success: true,
-      message: 'Token refreshed successfully',
-      data: result,
-    };
+      const response: ApiResponse<RefreshTokenResponse> = {
+        success: true,
+        message: 'Token refreshed successfully',
+        data: result,
+      };
 
-    res.status(200).json(response);
+      res.status(200).json(response);
+    } catch (error) {
+      // If refresh token is invalid/expired, clear the cookie
+      if (error instanceof UnauthorizedError || error instanceof NotFoundError) {
+        res.clearCookie('refreshToken', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          path: '/api/auth',
+        });
+      }
+      // Re-throw to let error handler process it
+      throw error;
+    }
   });
 
   /**

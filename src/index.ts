@@ -8,6 +8,7 @@ import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
 import adminPrinterRoutes from './routes/admin/printerRoutes.js';
 import adminDashboardRoutes from './routes/admin/dashboardRoutes.js';
+import adminMapRoutes from './routes/admin/mapRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
 import { authRequired, requireRole } from './middleware/auth.js';
@@ -16,6 +17,8 @@ import documentRoutes from './routes/documents.js';
 import printJobRoutes from './routes/printJobs.js';
 import * as publicPrinterRoutes from './routes/printers.js';
 import studentRoutes from './routes/students.js';
+import paymentRoutes from './routes/payment.js';
+import * as mapController from './controllers/map.controller.js';
 
 dotenv.config();
 
@@ -24,31 +27,70 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Configure CORS for Frontend
-const getAllowedOrigins = (): string | string[] => {
-  const frontendUrl = process.env.FRONTEND_URL;
-  if (frontendUrl) {
-    // Support multiple origins separated by comma
-    return frontendUrl.includes(',') ? frontendUrl.split(',').map(url => url.trim()) : frontendUrl;
-  }
-  // Default for development: Next.js usually runs on port 3000
-  return 'http://localhost:3000';
-};
-
 const corsOptions = {
-  origin: getAllowedOrigins(),
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps, Postman, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const allowedOrigins: string[] = [];
+
+    // Always allow localhost for development
+    allowedOrigins.push('http://localhost:3000');
+
+    // Add custom frontend URL if provided
+    const frontendUrl = process.env.FRONTEND_URL;
+    if (frontendUrl) {
+      const urls = frontendUrl.includes(',')
+        ? frontendUrl.split(',').map(url => url.trim())
+        : [frontendUrl];
+      urls.forEach(url => {
+        if (!allowedOrigins.includes(url)) {
+          allowedOrigins.push(url);
+        }
+      });
+    }
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Reject other origins
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Requested-With', 'x-student-id'],
+  allowedHeaders: ['Content-Type', 'X-Requested-With', 'x-student-id', 'Authorization'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
 };
 
 app.use(cors(corsOptions));
-console.log(
-  `[cors]: Allowed origins: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin
-  }`,
-);
+console.log('[cors]: CORS configured - allowing localhost:3000 and FRONTEND_URL');
+
 app.use(express.json());
 app.use(cookieParser());
+
+// Request logging middleware (for debugging webhook) - Đặt SAU express.json() để body đã được parse
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.includes('/sepay-webhook')) {
+    console.log('[Request]', {
+      method: req.method,
+      path: req.path,
+      url: req.url,
+      headers: {
+        authorization: req.headers.authorization ? 'Present' : 'Missing',
+        'content-type': req.headers['content-type'],
+        origin: req.headers.origin,
+        'user-agent': req.headers['user-agent'],
+      },
+      body: req.body,
+    });
+  }
+  next();
+});
 
 // Configure Swagger using PORT from environment
 const swaggerOptions = {
@@ -286,6 +328,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // Admin routes
 app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
+app.use('/api/admin/map', adminMapRoutes);
 app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
 
 // Auth routes
@@ -302,8 +345,14 @@ const publicPrinterRouter = Router();
 publicPrinterRouter.get('/available', publicPrinterRoutes.getAvailablePrinters);
 app.use('/api/printers', publicPrinterRouter);
 
+// Public Map routes (for students)
+app.get('/api/printers/map', mapController.getPublicPrintersWithLocations);
+
 // Students routes
 app.use('/api/student', studentRoutes);
+
+// Payment routes
+app.use('/api/payment', paymentRoutes);
 
 // Health check endpoint
 /**
@@ -333,6 +382,16 @@ app.use(errorHandler);
 // ====== SERVER STARTUP ======
 async function startServer() {
   try {
+    // Check JWT secrets configuration
+    const { checkJwtSecrets } = await import('./utils/jwt.util.js');
+    const jwtConfig = checkJwtSecrets();
+    if (!jwtConfig.accessSecret || !jwtConfig.refreshSecret) {
+      console.error('[server]: ❌ JWT secrets are not properly configured!');
+      console.error('[server]: Run: npm run update-jwt-secrets');
+      process.exit(1);
+    }
+    console.log('[server]: ✅ JWT secrets configured');
+
     // Connect to database
     await connectDB();
     await testConnection();

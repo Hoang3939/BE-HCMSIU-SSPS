@@ -189,11 +189,11 @@ export async function countDocumentPages(
       // Use createRequire for ESM compatibility
       const { createRequire } = await import('module');
       const __filename = fileURLToPath(import.meta.url);
-      const __dirname = dirname(__filename);
       const require = createRequire(__filename);
       const pdfParse = require('pdf-parse');
       const dataBuffer = await fs.readFile(filePath);
-      const pdf = await pdfParse(dataBuffer);
+      // pdf-parse 1.1.1 exports as a function, but require might return default
+      const pdf = await (typeof pdfParse === 'function' ? pdfParse(dataBuffer) : pdfParse.default(dataBuffer));
       console.log(`[pageCounter] PDF parsed: ${pdf.numpages} pages`);
       return pdf.numpages;
     } catch (error) {
@@ -224,7 +224,8 @@ export async function countDocumentPages(
       const require = createRequire(__filename);
       const pdfParse = require('pdf-parse');
       const pdfBuffer = await fs.readFile(convertedPdfPath);
-      const pdf = await pdfParse(pdfBuffer);
+      // pdf-parse 1.1.1 exports as a function, but require might return default
+      const pdf = await (typeof pdfParse === 'function' ? pdfParse(pdfBuffer) : pdfParse.default(pdfBuffer));
       const pageCount = pdf.numpages;
 
       // Clean up temporary PDF file and directory
@@ -261,7 +262,8 @@ export async function countDocumentPages(
       const require = createRequire(__filename);
       const pdfParse = require('pdf-parse');
       const pdfBuffer = await fs.readFile(convertedPdfPath);
-      const pdf = await pdfParse(pdfBuffer);
+      // pdf-parse 1.1.1 exports as a function, but require might return default
+      const pdf = await (typeof pdfParse === 'function' ? pdfParse(pdfBuffer) : pdfParse.default(pdfBuffer));
       const slideCount = pdf.numpages;
 
       // Clean up temporary PDF file and directory

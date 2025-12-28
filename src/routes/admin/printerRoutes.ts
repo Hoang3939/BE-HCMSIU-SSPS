@@ -1,5 +1,6 @@
 import express from 'express';
 import * as printerController from '../../controllers/printerController.js';
+import { authRequired, requireRole } from '../../middleware/auth.js';
 
 const router = express.Router();
 
@@ -9,6 +10,10 @@ const router = express.Router();
  *   - name: Admin - Printers
  *     description: API quản lý máy in cho Admin
  */
+
+// All routes require authentication and ADMIN/SPSO role
+router.use(authRequired);
+router.use(requireRole('ADMIN', 'SPSO'));
 
 // GET /api/admin/printers - Lấy danh sách máy in
 router.get('/', printerController.getPrinters);
