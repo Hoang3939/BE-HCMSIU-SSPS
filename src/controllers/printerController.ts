@@ -69,10 +69,15 @@ export async function getPrinters(req: Request, res: Response): Promise<void> {
     };
 
     const result = await printerService.getPrinters(queryParams);
-    res.status(200).json(result);
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
   } catch (error) {
     console.error('[printerController] Error getting printers:', error);
     res.status(500).json({
+      success: false,
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error',
     });

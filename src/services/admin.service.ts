@@ -58,7 +58,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const todayPrintJobsResult = await pool.request().query(`
       SELECT COUNT(*) as printJobsToday
       FROM PrintJobs
-      WHERE CAST(CreatedAt AS DATE) = CAST(GETDATE() AS DATE)
+      WHERE CAST(StartTime AS DATE) = CAST(GETDATE() AS DATE)
     `);
 
     // Lấy số print jobs thất bại (hôm nay)
@@ -66,7 +66,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       SELECT COUNT(*) as failedPrintJobs
       FROM PrintJobs
       WHERE Status = 'FAILED' 
-        AND CAST(CreatedAt AS DATE) = CAST(GETDATE() AS DATE)
+        AND CAST(StartTime AS DATE) = CAST(GETDATE() AS DATE)
     `);
 
     const printerStats = printerStatsResult.recordset[0];
@@ -95,28 +95,52 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 export async function getRecentActivities(limit: number = 10): Promise<RecentActivity[]> {
   const pool = await getPool();
 
+  if (!pool) {
+    throw new Error('Database connection not available');
+  }
+
   try {
+    // Validate limit
+    const validLimit = Math.max(1, Math.min(limit || 10, 100)); // Between 1 and 100
+
     const result = await pool
       .request()
-      .input('limit', sql.Int, limit)
+      .input('limit', sql.Int, validLimit)
       .query(`
         SELECT TOP (@limit)
-          pj.PrintJobID as id,
+          pj.JobID as id,
           pj.Status,
-          pj.PagesPrinted as pages,
-          pj.CreatedAt,
+          ISNULL(pj.TotalPages, 0) as pages,
+          pj.StartTime as createdAt,
           pj.StudentID as studentId,
-          s.FullName as studentName,
+          u.Username as studentName,
+          s.StudentCode,
           pj.PrinterID as printerId,
           p.Name as printerName
         FROM PrintJobs pj
         LEFT JOIN Students s ON pj.StudentID = s.StudentID
+        LEFT JOIN Users u ON s.StudentID = u.UserID
         LEFT JOIN Printers p ON pj.PrinterID = p.PrinterID
-        ORDER BY pj.CreatedAt DESC
+        WHERE pj.JobID IS NOT NULL
+        ORDER BY pj.StartTime DESC
       `);
 
+    if (!result.recordset || result.recordset.length === 0) {
+      return [];
+    }
+
     const activities: RecentActivity[] = result.recordset.map((row: any) => {
-      const createdAt = new Date(row.CreatedAt);
+      // Safely parse createdAt (from StartTime)
+      let createdAt: Date;
+      try {
+        createdAt = row.createdAt ? new Date(row.createdAt) : new Date();
+        if (isNaN(createdAt.getTime())) {
+          createdAt = new Date();
+        }
+      } catch {
+        createdAt = new Date();
+      }
+
       const now = new Date();
       const diffMs = now.getTime() - createdAt.getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -134,15 +158,20 @@ export async function getRecentActivities(limit: number = 10): Promise<RecentAct
         timeAgo = `${days} ngày trước`;
       }
 
+      // Safely extract values with defaults
+      const status = row.Status || 'PENDING';
+      const studentId = row.studentId ? String(row.studentId) : '';
+      const printerId = row.printerId ? String(row.printerId) : '';
+
       return {
-        id: row.id,
-        type: row.Status === 'FAILED' ? 'error' : 'print',
-        studentId: row.studentId,
-        studentName: row.studentName || 'N/A',
-        printerId: row.printerId,
-        printerName: row.printerName || 'N/A',
-        pages: row.pages || 0,
-        status: row.Status === 'FAILED' ? 'failed' : 'success',
+        id: row.id ? String(row.id) : '',
+        type: status === 'FAILED' ? 'error' : 'print',
+        studentId,
+        studentName: row.studentName || row.StudentCode || undefined,
+        printerId,
+        printerName: row.printerName || undefined,
+        pages: row.pages ? parseInt(row.pages, 10) : 0,
+        status: status === 'FAILED' ? 'failed' : 'success',
         createdAt,
         timeAgo,
       };
@@ -151,6 +180,10 @@ export async function getRecentActivities(limit: number = 10): Promise<RecentAct
     return activities;
   } catch (error) {
     console.error('[adminService] Error getting recent activities:', error);
+    console.error('[adminService] Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }
 }

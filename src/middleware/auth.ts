@@ -1,23 +1,11 @@
 import { type Request, type Response, type NextFunction } from 'express';
-import * as jwt from 'jsonwebtoken';
-import type { JwtPayload } from 'jsonwebtoken';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
+import { verifyAccessToken } from '../utils/jwt.util.js';
+import { UnauthorizedError } from '../errors/AppError.js';
 
 // Interface cho payload của JWT token
 export interface AuthPayload {
-  userID: string; // UUID string, not number
+  userID: string; // UUID string
   role: string;
-}
-
-// Helper function để lấy JWT secret với type safety
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET is not configured');
-  }
-  return secret;
 }
 
 // Extend Express.Request để thêm field auth
@@ -31,8 +19,7 @@ declare global {
 
 /**
  * Middleware xác thực: Kiểm tra Bearer token trong header Authorization
- * Nếu token hợp lệ, decode và gán vào req.auth
- * Nếu không hợp lệ, trả về 401 Unauthorized
+ * Sử dụng JWT utility functions để đảm bảo tính nhất quán
  */
 export const authRequired = (
   req: Request,
@@ -62,61 +49,55 @@ export const authRequired = (
 
     const token = parts[1] as string;
 
-    // Verify và decode token
-    try {
-      // Lấy JWT_SECRET từ environment variable
-      const jwtSecretRaw = process.env.JWT_SECRET;
-      if (!jwtSecretRaw) {
-        console.error('[auth-middleware]: JWT_SECRET is not configured');
-        res.status(500).json({
-          success: false,
-          message: 'Server configuration error',
-        });
-        return;
-      }
-      // After the null check, jwtSecretRaw is definitely a string
-      // Verify token với issuer và audience (giống như trong jwt.util.ts)
-      const decoded = jwt.verify(token, jwtSecretRaw, {
-        issuer: 'hcmsiu-ssps',
-        audience: 'hcmsiu-ssps-users',
+    if (!token || token.trim().length === 0) {
+      res.status(401).json({
+        success: false,
+        message: 'Token is missing',
       });
-      // Kiểm tra type và extract payload
-      if (typeof decoded === 'string' || !decoded || typeof decoded !== 'object') {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid token payload',
-        });
-        return;
-      }
+      return;
+    }
 
-      // Type guard để đảm bảo decoded có đủ properties
-      // JWT token có userID (string UUID), không phải userId (number)
-      const payload = decoded as any; // Use any to access custom fields
-      if (!payload.userID || !payload.role) {
-        res.status(401).json({
-          success: false,
-          message: 'Token payload is missing required fields',
-        });
-        return;
-      }
+    // Verify token sử dụng JWT utility function
+    try {
+      const decoded = verifyAccessToken(token);
 
       // Gán thông tin đã decode vào req.auth
       req.auth = {
-        userID: String(payload.userID), // Keep as string UUID
-        role: String(payload.role),
+        userID: String(decoded.userID),
+        role: String(decoded.role),
       };
 
       next();
     } catch (error) {
-      // Token không hợp lệ hoặc đã hết hạn
+      // Handle specific JWT errors
+      let errorMessage = 'Invalid or expired token';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('expired')) {
+          errorMessage = 'Token expired';
+        } else if (error.message.includes('Invalid')) {
+          errorMessage = 'Invalid token';
+        } else if (error.message.includes('not active')) {
+          errorMessage = 'Token not active yet';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      console.warn('[auth-middleware] Token verification failed:', {
+        message: errorMessage,
+        path: req.path,
+        method: req.method,
+      });
+
       res.status(401).json({
         success: false,
-        message: 'Invalid or expired token',
+        message: errorMessage,
       });
       return;
     }
   } catch (error) {
-    console.error('[auth-middleware]: Error in authRequired:', error);
+    console.error('[auth-middleware] Error in authRequired:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -151,4 +132,3 @@ export const requireRole = (...roles: string[]) => {
     next();
   };
 };
-

@@ -40,6 +40,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -50,7 +51,7 @@
     "libreoffice-convert": "^1.7.0",
     "mssql": "^12.2.0",
     "multer": "^2.0.2",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^1.1.4",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   }

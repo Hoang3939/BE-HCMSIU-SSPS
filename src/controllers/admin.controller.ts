@@ -81,14 +81,31 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
  */
 export async function getRecentActivities(req: Request, res: Response): Promise<void> {
   try {
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    // Parse and validate limit parameter
+    let limit = 10;
+    if (req.query.limit) {
+      const parsedLimit = parseInt(req.query.limit as string, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        limit = parsedLimit;
+      }
+    }
+
     const activities = await adminService.getRecentActivities(limit);
+    
+    // Convert Date objects to ISO strings for JSON serialization
+    const serializedActivities = activities.map(activity => ({
+      ...activity,
+      createdAt: activity.createdAt.toISOString(),
+    }));
+
     res.status(200).json({
       success: true,
-      data: activities,
+      data: serializedActivities,
     });
   } catch (error) {
     console.error('[adminController] Error getting recent activities:', error);
+    console.error('[adminController] Error stack:', error instanceof Error ? error.stack : undefined);
+    
     res.status(500).json({
       success: false,
       error: 'Internal server error',

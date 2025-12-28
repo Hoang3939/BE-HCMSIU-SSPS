@@ -8,6 +8,7 @@ import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
 import adminPrinterRoutes from './routes/admin/printerRoutes.js';
 import adminDashboardRoutes from './routes/admin/dashboardRoutes.js';
+import adminMapRoutes from './routes/admin/mapRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
 import { authRequired, requireRole } from './middleware/auth.js';
@@ -16,6 +17,7 @@ import documentRoutes from './routes/documents.js';
 import printJobRoutes from './routes/printJobs.js';
 import * as publicPrinterRoutes from './routes/printers.js';
 import studentRoutes from './routes/students.js';
+import * as mapController from './controllers/map.controller.js';
 
 dotenv.config();
 
@@ -38,7 +40,7 @@ const corsOptions = {
   origin: getAllowedOrigins(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Requested-With', 'x-student-id'],
+  allowedHeaders: ['Content-Type', 'X-Requested-With', 'x-student-id', 'Authorization'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
 };
 
@@ -286,6 +288,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // Admin routes
 app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
+app.use('/api/admin/map', adminMapRoutes);
 app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
 
 // Auth routes
@@ -301,6 +304,9 @@ app.use('/api/print-jobs', printJobRoutes);
 const publicPrinterRouter = Router();
 publicPrinterRouter.get('/available', publicPrinterRoutes.getAvailablePrinters);
 app.use('/api/printers', publicPrinterRouter);
+
+// Public Map routes (for students)
+app.get('/api/printers/map', mapController.getPublicPrintersWithLocations);
 
 // Students routes
 app.use('/api/student', studentRoutes);
@@ -333,6 +339,16 @@ app.use(errorHandler);
 // ====== SERVER STARTUP ======
 async function startServer() {
   try {
+    // Check JWT secrets configuration
+    const { checkJwtSecrets } = await import('./utils/jwt.util.js');
+    const jwtConfig = checkJwtSecrets();
+    if (!jwtConfig.accessSecret || !jwtConfig.refreshSecret) {
+      console.error('[server]: ❌ JWT secrets are not properly configured!');
+      console.error('[server]: Run: npm run update-jwt-secrets');
+      process.exit(1);
+    }
+    console.log('[server]: ✅ JWT secrets configured');
+
     // Connect to database
     await connectDB();
     await testConnection();

@@ -99,23 +99,44 @@ export class AuthService {
    * Refresh access token
    */
   static async refreshToken(refreshToken: string): Promise<RefreshTokenResponse> {
-    try {
-      // Verify refresh token
-      const decoded = verifyRefreshToken(refreshToken);
+    if (!refreshToken || refreshToken.trim().length === 0) {
+      throw new UnauthorizedError('Refresh token is required');
+    }
 
-      // Check session in database
-      const session = await SessionModel.findByRefreshToken(refreshToken);
-      if (!session) {
-        throw new UnauthorizedError('Invalid or expired refresh token');
+    try {
+      // Step 1: Verify refresh token JWT signature and expiration
+      let decoded;
+      try {
+        decoded = verifyRefreshToken(refreshToken);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.message.includes('expired')) {
+            throw new UnauthorizedError('Refresh token expired');
+          } else if (error.message.includes('Invalid')) {
+            throw new UnauthorizedError('Invalid refresh token');
+          }
+        }
+        throw new UnauthorizedError('Invalid refresh token');
       }
 
-      // Check if user still exists and is active
+      // Step 2: Check session in database
+      const session = await SessionModel.findByRefreshToken(refreshToken);
+      if (!session) {
+        throw new UnauthorizedError('Refresh token not found in database');
+      }
+
+      // Step 3: Verify session hasn't expired
+      if (session.expiresAt < new Date()) {
+        throw new UnauthorizedError('Session expired');
+      }
+
+      // Step 4: Check if user still exists and is active
       const user = await UserModel.findByUserID(decoded.userID);
       if (!user) {
         throw new NotFoundError('User not found');
       }
 
-      // Generate new access token
+      // Step 5: Generate new access token
       const userPayload: UserPayload = {
         userID: user.userID,
         username: user.username,
@@ -125,9 +146,10 @@ export class AuthService {
 
       const newAccessToken = generateAccessToken(userPayload);
 
-      // Update session with new token
+      // Step 6: Update session with new access token
+      // Access token expires in 15 minutes (matching JWT_ACCESS_EXPIRES_IN)
       const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes
+      expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
       await SessionModel.updateSession(session.sessionID, newAccessToken, expiresAt);
 
@@ -135,9 +157,17 @@ export class AuthService {
         token: newAccessToken,
       };
     } catch (error) {
+      // Re-throw known errors
       if (error instanceof UnauthorizedError || error instanceof NotFoundError) {
         throw error;
       }
+      
+      // Log unexpected errors
+      console.error('[AuthService] Unexpected error refreshing token:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      
       throw new InternalServerError('Error refreshing token');
     }
   }

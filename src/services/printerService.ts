@@ -154,24 +154,34 @@ export async function getPrinterById(printerId: string): Promise<Printer | null>
 export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
   const pool = await getPool();
 
-  // Validate LocationID if provided
+  // Validate and normalize LocationID
+  // Convert empty strings, undefined, or whitespace-only strings to null
+  let locationIDValue: string | null = null;
   if (data.LocationID) {
-    await validateLocationID(data.LocationID);
+    const trimmed = typeof data.LocationID === 'string' ? data.LocationID.trim() : '';
+    if (trimmed.length > 0) {
+      // Validate LocationID format (must be valid UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(trimmed)) {
+        throw new Error('Invalid LocationID format. Must be a valid UUID.');
+      }
+      await validateLocationID(trimmed);
+      locationIDValue = trimmed;
+    }
   }
 
-  const locationIDValue = data.LocationID || null;
+  const request = pool.request();
+  request.input('name', sql.NVarChar, data.Name);
+  request.input('brand', sql.NVarChar, data.Brand || null);
+  request.input('model', sql.NVarChar, data.Model || null);
+  request.input('description', sql.NVarChar(sql.MAX), data.Description || null);
+  request.input('status', sql.NVarChar, data.Status || 'OFFLINE');
+  request.input('ipAddress', sql.NVarChar, data.IPAddress || null);
+  request.input('cupsPrinterName', sql.NVarChar, data.CUPSPrinterName || null);
+  request.input('isActive', sql.Bit, data.IsActive !== undefined ? data.IsActive : true);
+  request.input('locationID', sql.UniqueIdentifier, locationIDValue);
 
-  const result = await pool
-    .request()
-    .input('name', sql.NVarChar, data.Name)
-    .input('brand', sql.NVarChar, data.Brand || null)
-    .input('model', sql.NVarChar, data.Model || null)
-    .input('description', sql.NVarChar(sql.MAX), data.Description || null)
-    .input('status', sql.NVarChar, data.Status || 'OFFLINE')
-    .input('ipAddress', sql.NVarChar, data.IPAddress || null)
-    .input('cupsPrinterName', sql.NVarChar, data.CUPSPrinterName || null)
-    .input('locationID', sql.UniqueIdentifier, locationIDValue)
-    .input('isActive', sql.Bit, data.IsActive !== undefined ? data.IsActive : true)
+  const result = await request
     .query(`
       INSERT INTO Printers (Name, Brand, Model, Description, Status, IPAddress, CUPSPrinterName, LocationID, IsActive)
       OUTPUT INSERTED.*
@@ -186,11 +196,6 @@ export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
  */
 export async function updatePrinter(printerId: string, data: UpdatePrinterDto): Promise<Printer | null> {
   const pool = await getPool();
-
-  // Validate LocationID if provided
-  if (data.LocationID !== undefined && data.LocationID !== null) {
-    await validateLocationID(data.LocationID);
-  }
 
   // Build dynamic update query
   const updateFields: string[] = [];
@@ -225,8 +230,20 @@ export async function updatePrinter(printerId: string, data: UpdatePrinterDto): 
     request.input('cupsPrinterName', sql.NVarChar, data.CUPSPrinterName);
   }
   if (data.LocationID !== undefined) {
+    // Normalize LocationID: empty string becomes null
+    let locationIDValue: string | null = null;
+    if (data.LocationID && data.LocationID.trim().length > 0) {
+      // Validate LocationID format (must be valid UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(data.LocationID.trim())) {
+        throw new Error('Invalid LocationID format. Must be a valid UUID.');
+      }
+      await validateLocationID(data.LocationID.trim());
+      locationIDValue = data.LocationID.trim();
+    }
+    
     updateFields.push('LocationID = @locationID');
-    request.input('locationID', sql.UniqueIdentifier, data.LocationID || null);
+    request.input('locationID', sql.UniqueIdentifier, locationIDValue);
   }
   if (data.IsActive !== undefined) {
     updateFields.push('IsActive = @isActive');
