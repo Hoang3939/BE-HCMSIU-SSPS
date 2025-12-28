@@ -116,7 +116,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /api/admin/users:
+ * /admin/users:
  *   post:
  *     tags:
  *       - Admin - User Management
@@ -391,7 +391,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /api/admin/users/{id}:
+ * /admin/users/{id}:
  *   put:
  *     tags:
  *       - Admin - User Management
@@ -457,8 +457,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const { username, email, password, role, isActive } = req.body;
 
-    // Check if user exists (for admin operations, include inactive users)
-    const existingUser = await UserModel.findByUserIDForAdmin(userID);
+    // Check if user exists
+    const existingUser = await UserModel.findByUserID(userID);
     if (!existingUser) {
       throw new NotFoundError('Không tìm thấy người dùng');
     }
@@ -604,7 +604,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /api/admin/users/{id}:
+ * /admin/users/{id}:
  *   delete:
  *     tags:
  *       - Admin - User Management
@@ -645,8 +645,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const userID = validateUUID(req.params.id, 'UserID');
 
-    // Check if user exists (for admin operations, include inactive users)
-    const existingUser = await UserModel.findByUserIDForAdmin(userID);
+    // Check if user exists
+    const existingUser = await UserModel.findByUserID(userID);
     if (!existingUser) {
       throw new NotFoundError('Không tìm thấy người dùng');
     }

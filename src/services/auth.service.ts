@@ -104,15 +104,11 @@ export class AuthService {
     }
 
     try {
-      console.log('[auth-service]: Refreshing token, checking refresh token validity...');
-      
       // Step 1: Verify refresh token JWT signature and expiration
       let decoded;
       try {
         decoded = verifyRefreshToken(refreshToken);
-        console.log('[auth-service]: Refresh token verified successfully, userID:', decoded.userID);
       } catch (error) {
-        console.error('[auth-service]: Refresh token verification failed:', error instanceof Error ? error.message : 'Unknown error');
         if (error instanceof Error) {
           if (error.message.includes('expired')) {
             throw new UnauthorizedError('Refresh token expired');
@@ -123,22 +119,7 @@ export class AuthService {
         throw new UnauthorizedError('Invalid refresh token');
       }
 
-      // Step 2: Check session in database
-      console.log('[auth-service]: Checking session in database...');
-      const session = await SessionModel.findByRefreshToken(refreshToken);
-      if (!session) {
-        console.error('[auth-service]: Session not found in database for refresh token');
-        throw new UnauthorizedError('Refresh token not found in database');
-      }
-      console.log('[auth-service]: Session found, sessionID:', session.sessionID);
-
-      // Step 3: Verify session hasn't expired
-      if (session.expiresAt < new Date()) {
-        console.error('[auth-service]: Session has expired');
-        throw new UnauthorizedError('Session expired');
-      }
-
-      // Step 4: Check if user still exists and is active
+      // Step 2: Check if user still exists and is active (do this first to avoid unnecessary session recreation)
       const user = await UserModel.findByUserID(decoded.userID);
       if (!user) {
         console.error('[auth-service]: User not found, userID:', decoded.userID);
@@ -149,6 +130,43 @@ export class AuthService {
         throw new UnauthorizedError('User account is inactive');
       }
       console.log('[auth-service]: User found and active, username:', user.username);
+
+      // Step 3: Check session in database
+      let session = await SessionModel.findByRefreshToken(refreshToken);
+      if (!session) {
+        // If refresh token JWT is still valid but session not found in database,
+        // it might have been deleted (e.g., server restart, database clear).
+        // In this case, we can recreate the session if the JWT is still valid.
+        console.warn('[AuthService] Refresh token not found in database, but JWT is valid. Recreating session:', {
+          userID: decoded.userID,
+          refreshTokenPrefix: refreshToken.substring(0, 20) + '...',
+          tokenExpiry: decoded.exp ? new Date(decoded.exp * 1000) : 'N/A',
+        });
+
+        // Recreate session with the same refresh token
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+        const sessionID = await SessionModel.createSession(
+          decoded.userID,
+          '', // Will be updated below with new access token
+          refreshToken,
+          expiresAt,
+          undefined, // IP address
+          undefined  // User agent
+        );
+
+        // Get the created session
+        session = await SessionModel.findBySessionID(sessionID);
+        if (!session) {
+          throw new InternalServerError('Failed to recreate session');
+        }
+      }
+
+      // Step 4: Verify session hasn't expired
+      if (session.expiresAt < new Date()) {
+        throw new UnauthorizedError('Session expired');
+      }
 
       // Step 5: Generate new access token
       const userPayload: UserPayload = {
@@ -177,13 +195,13 @@ export class AuthService {
       if (error instanceof UnauthorizedError || error instanceof NotFoundError) {
         throw error;
       }
-      
+
       // Log unexpected errors
-      console.error('[auth-service] Unexpected error refreshing token:', {
+      console.error('[AuthService] Unexpected error refreshing token:', {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
-      
+
       throw new InternalServerError('Error refreshing token');
     }
   }

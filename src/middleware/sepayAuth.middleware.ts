@@ -36,7 +36,16 @@ export function verifySePayWebhook(
 
   // SePay sends: "Apikey API_KEY_CUA_BAN" (exact format)
   // Trim whitespace to handle any extra spaces
-  const trimmedHeader = authHeader.trim();
+  // Handle case where authHeader might be string[] (Express headers can be arrays)
+  const headerValue = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+  
+  // Ensure headerValue is a string (not undefined or null)
+  if (!headerValue || typeof headerValue !== 'string') {
+    console.warn('[SePayAuth] Invalid Authorization header format');
+    throw new UnauthorizedError('Invalid Authorization header format');
+  }
+  
+  const trimmedHeader = headerValue.trim();
   const expectedHeader = `Apikey ${sepayApiKey}`;
 
   if (trimmedHeader !== expectedHeader) {

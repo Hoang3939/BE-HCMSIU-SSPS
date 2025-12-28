@@ -53,9 +53,12 @@ export class SessionModel {
       throw new Error('Database connection not available');
     }
 
+    // Trim and normalize refresh token
+    const normalizedRefreshToken = refreshToken.trim();
+
     const request = pool.request();
     const result = await request
-      .input('RefreshToken', sql.NVarChar(sql.MAX), refreshToken)
+      .input('RefreshToken', sql.NVarChar(sql.MAX), normalizedRefreshToken)
       .query(`
         SELECT 
           SessionID,
@@ -71,7 +74,25 @@ export class SessionModel {
           AND ExpiresAt > GETDATE()
       `);
 
+    // Log for debugging if not found
     if (result.recordset.length === 0) {
+      // Check if there are any sessions for this token (even expired)
+      const checkRequest = pool.request();
+      const checkResult = await checkRequest
+        .input('RefreshToken', sql.NVarChar(sql.MAX), normalizedRefreshToken)
+        .query(`
+          SELECT COUNT(*) as TotalCount
+          FROM Sessions
+          WHERE RefreshToken = @RefreshToken
+        `);
+
+      const totalCount = checkResult.recordset[0]?.TotalCount || 0;
+      console.warn('[SessionModel] Refresh token not found or expired:', {
+        refreshTokenPrefix: normalizedRefreshToken.substring(0, 20) + '...',
+        totalSessionsWithThisToken: totalCount,
+        message: totalCount > 0 ? 'Session exists but expired' : 'Session not found in database',
+      });
+
       return null;
     }
 

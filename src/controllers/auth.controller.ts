@@ -30,17 +30,9 @@ export class AuthController {
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // 'lax' cho development, 'strict' cho production
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Lax for development to allow cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      path: '/', // Set path to root để cookie được gửi với tất cả requests
-    });
-    
-    console.log('[auth-controller]: Refresh token set in cookie:', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-      path: '/',
-      maxAge: '7 days',
+      path: '/', // Set path to root so cookie is sent with all requests
     });
 
     const response: ApiResponse<LoginResponse> = {
@@ -66,8 +58,17 @@ export class AuthController {
       allCookies: req.cookies,
     });
 
+    // Debug logging
+    const refreshTokenValue = req.cookies?.refreshToken || req.body?.refreshToken;
+    console.log('[AuthController] Refresh token request:', {
+      hasCookies: !!req.cookies,
+      cookies: req.cookies ? Object.keys(req.cookies) : [],
+      hasRefreshTokenCookie: !!req.cookies?.refreshToken,
+      hasRefreshTokenBody: !!req.body?.refreshToken,
+      refreshTokenPrefix: refreshTokenValue ? refreshTokenValue.substring(0, 20) + '...' : 'N/A',
+    });
+
     if (!refreshToken) {
-      console.error('[auth-controller]: Refresh token not found in cookie or body');
       // Clear cookie if it exists but is empty
       res.clearCookie('refreshToken', {
         httpOnly: true,
@@ -78,8 +79,6 @@ export class AuthController {
       throw new BadRequestError('Refresh token is required');
     }
 
-    console.log('[auth-controller]: Refresh token found, length:', refreshToken.length);
-
     try {
       const result: RefreshTokenResponse = await AuthService.refreshToken(refreshToken);
 
@@ -89,7 +88,6 @@ export class AuthController {
         data: result,
       };
 
-      console.log('[auth-controller]: Token refreshed successfully');
       res.status(200).json(response);
     } catch (error) {
       // If refresh token is invalid/expired, clear the cookie

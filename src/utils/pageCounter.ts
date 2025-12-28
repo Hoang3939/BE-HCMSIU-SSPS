@@ -66,6 +66,9 @@ export async function convertToPdfWithLibreOffice(filePath: string): Promise<str
     ];
 
     // Use spawn with stdin pipe to automatically send Enter key
+    let exitCode: number | null = null;
+    let stderrOutput = '';
+    
     await new Promise<void>((resolve, reject) => {
       const libreOfficeProcess = spawn(libreOfficeCmd, args, {
         stdio: ['pipe', 'pipe', 'pipe'], // Use pipe to send input
@@ -93,7 +96,6 @@ export async function convertToPdfWithLibreOffice(filePath: string): Promise<str
       }
 
       // Capture stderr to check for errors (but don't show prompts)
-      let stderrOutput = '';
       if (libreOfficeProcess.stderr) {
         libreOfficeProcess.stderr.on('data', (data: Buffer) => {
           stderrOutput += data.toString();
@@ -107,35 +109,18 @@ export async function convertToPdfWithLibreOffice(filePath: string): Promise<str
 
       libreOfficeProcess.on('close', (code: number | null) => {
         clearTimeout(timeout);
+        exitCode = code;
+        // Don't reject on non-zero exit code - LibreOffice may still create PDF successfully
+        // We'll check for PDF file existence later
         if (code === 0 || code === null) {
-          // Success or process was killed normally
-          console.log('[pageCounter] LibreOffice conversion process completed');
-          resolve();
+          console.log('[pageCounter] LibreOffice conversion process completed with exit code:', code);
         } else {
-          console.error('[pageCounter] LibreOffice exited with code:', code);
-          console.error('[pageCounter] LibreOffice stderr:', stderrOutput);
-
-          // Provide more helpful error messages
-          let errorMessage = `LibreOffice conversion failed with exit code ${code}`;
+          console.warn('[pageCounter] LibreOffice exited with code:', code, '(will check for PDF file anyway)');
           if (stderrOutput) {
-            // Try to extract meaningful error from stderr
-            const errorLines = stderrOutput.split('\n').filter(line =>
-              line.trim() &&
-              !line.includes('Warning') &&
-              !line.includes('Info') &&
-              !line.includes('fontconfig')
-            );
-            if (errorLines.length > 0) {
-              errorMessage += `. ${errorLines.slice(0, 3).join(' ')}`;
-            } else {
-              errorMessage += `. ${stderrOutput.substring(0, 200)}`;
-            }
-          } else {
-            errorMessage += '. Có thể file Word bị lỗi hoặc LibreOffice không thể xử lý file này.';
+            console.warn('[pageCounter] LibreOffice stderr:', stderrOutput.substring(0, 500));
           }
-
-          reject(new Error(errorMessage));
         }
+        resolve();
       });
 
       libreOfficeProcess.on('error', (error: Error) => {
@@ -144,20 +129,72 @@ export async function convertToPdfWithLibreOffice(filePath: string): Promise<str
       });
     });
 
-    // Wait a bit for LibreOffice to finish writing the PDF file
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait longer for LibreOffice to finish writing the PDF file
+    // LibreOffice may need more time, especially for complex documents
+    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased from 1000ms to 3000ms
 
-    // Find the converted PDF file
-    // LibreOffice may change filename, so list all files in output directory
-    const files = await fs.readdir(outputDir);
-    const pdfFiles = files.filter(f => f.toLowerCase().endsWith('.pdf'));
+    // Find the converted PDF file with retry logic
+    // LibreOffice may need more time to write the file, especially for large/complex documents
+    let pdfFiles: string[] = [];
+    const maxRetries = 5;
+    const retryDelay = 1000; // 1 second between retries
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const files = await fs.readdir(outputDir);
+        pdfFiles = files.filter(f => f.toLowerCase().endsWith('.pdf'));
+        
+        if (pdfFiles.length > 0) {
+          console.log(`[pageCounter] Found PDF file after ${attempt + 1} attempt(s)`);
+          break;
+        }
+        
+        if (attempt < maxRetries - 1) {
+          console.log(`[pageCounter] PDF not found yet, retrying in ${retryDelay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      } catch (error) {
+        console.error('[pageCounter] Error reading output directory:', error);
+        if (attempt === maxRetries - 1) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
 
     if (pdfFiles.length === 0) {
-      console.error('[pageCounter] No PDF file found after LibreOffice conversion');
+      console.error('[pageCounter] No PDF file found after LibreOffice conversion after', maxRetries, 'retries');
+      console.error('[pageCounter] Exit code:', exitCode);
       console.error('[pageCounter] Output directory:', outputDir);
-      console.error('[pageCounter] Output directory contents:', files);
+      try {
+        const files = await fs.readdir(outputDir);
+        console.error('[pageCounter] Output directory contents:', files);
+      } catch (e) {
+        console.error('[pageCounter] Could not read output directory');
+      }
+      
+      // Provide more helpful error message based on exit code
+      let errorMessage = 'LibreOffice không tạo được file PDF.';
+      if (exitCode !== null && exitCode !== 0) {
+        errorMessage += ` LibreOffice exited with code ${exitCode}.`;
+        if (stderrOutput) {
+          const errorLines = stderrOutput.split('\n').filter(line =>
+            line.trim() &&
+            !line.includes('Warning') &&
+            !line.includes('Info') &&
+            !line.includes('fontconfig')
+          );
+          if (errorLines.length > 0) {
+            errorMessage += ` ${errorLines.slice(0, 2).join(' ')}`;
+          }
+        }
+        errorMessage += ' Có thể file bị lỗi hoặc LibreOffice không thể xử lý file này.';
+      } else {
+        errorMessage += ' Kiểm tra file input có hợp lệ không.';
+      }
+      
       await fs.rmdir(outputDir, { recursive: true }).catch(() => { });
-      throw new Error('LibreOffice không tạo được file PDF. Kiểm tra file input có hợp lệ không.');
+      throw new Error(errorMessage);
     }
 
     // Use the first PDF file found (should be the converted one)
