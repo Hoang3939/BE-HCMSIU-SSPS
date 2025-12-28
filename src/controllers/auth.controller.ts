@@ -8,7 +8,7 @@ import { AuthService } from '../services/auth.service.js';
 import { asyncHandler } from '../middleware/asyncHandler.middleware.js';
 import { ApiResponse } from '../types/common.types.js';
 import { LoginResponse, RefreshTokenResponse } from '../types/auth.types.js';
-import { BadRequestError, UnauthorizedError } from '../errors/AppError.js';
+import { BadRequestError, UnauthorizedError, NotFoundError } from '../errors/AppError.js';
 
 export class AuthController {
   /**
@@ -30,9 +30,9 @@ export class AuthController {
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // 'lax' cho development để cookie được gửi cross-site
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      path: '/api/auth',
+      path: '/', // Đặt path là '/' để cookie được gửi cho tất cả requests
     });
 
     const response: ApiResponse<LoginResponse> = {
@@ -51,14 +51,14 @@ export class AuthController {
     // Get refresh token from cookie (preferred) or body
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
+    console.log('[AuthController] Refresh token request:', {
+      hasCookie: !!req.cookies?.refreshToken,
+      hasBody: !!req.body?.refreshToken,
+      cookieKeys: Object.keys(req.cookies || {}),
+    });
+
     if (!refreshToken) {
-      // Clear cookie if it exists but is empty
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/api/auth',
-      });
+      console.error('[AuthController] No refresh token found in cookie or body');
       throw new BadRequestError('Refresh token is required');
     }
 
@@ -78,8 +78,8 @@ export class AuthController {
         res.clearCookie('refreshToken', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
-          path: '/api/auth',
+          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+          path: '/', // Phải match với path khi set cookie
         });
       }
       // Re-throw to let error handler process it

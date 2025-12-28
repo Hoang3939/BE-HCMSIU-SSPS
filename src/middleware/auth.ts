@@ -1,10 +1,12 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.util.js';
-import { UnauthorizedError } from '../errors/AppError.js';
+import type { JWTPayload } from '../types/auth.types.js';
 
 // Interface cho payload của JWT token
 export interface AuthPayload {
-  userID: string; // UUID string
+  userID: string;
+  username: string;
+  email: string;
   role: string;
 }
 
@@ -38,8 +40,20 @@ export const authRequired = (
     }
 
     // Kiểm tra format "Bearer <token>"
-    const parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    // Xử lý trường hợp có nhiều "Bearer" (ví dụ: "Bearer Bearer <token>")
+    const parts = authHeader.trim().split(/\s+/);
+    
+    // Loại bỏ tất cả "Bearer" ở đầu, chỉ lấy token cuối cùng
+    let token: string | undefined;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      if (part && part !== 'Bearer' && part.length > 0) {
+        token = part;
+        break;
+      }
+    }
+
+    if (!token) {
       res.status(401).json({
         success: false,
         message: 'Invalid authorization format. Expected: Bearer <token>',
@@ -47,24 +61,31 @@ export const authRequired = (
       return;
     }
 
-    const token = parts[1] as string;
-
-    if (!token || token.trim().length === 0) {
-      res.status(401).json({
-        success: false,
-        message: 'Token is missing',
-      });
-      return;
-    }
-
-    // Verify token sử dụng JWT utility function
+    // Verify và decode token sử dụng JWT utility function
     try {
-      const decoded = verifyAccessToken(token);
+      // Verify token với cùng issuer và audience như khi tạo token
+      const payload = verifyAccessToken(token);
+      
+      // Extract thông tin từ payload
+      const userID = payload.userID;
+      const username = payload.username || '';
+      const email = payload.email || '';
+      const role = payload.role;
+      
+      if (!userID || !role) {
+        res.status(401).json({
+          success: false,
+          message: 'Token payload is missing required fields (userID and role)',
+        });
+        return;
+      }
 
       // Gán thông tin đã decode vào req.auth
       req.auth = {
-        userID: String(decoded.userID),
-        role: String(decoded.role),
+        userID: String(userID),
+        username: String(username),
+        email: String(email),
+        role: String(role),
       };
 
       next();
