@@ -80,7 +80,7 @@ const router = Router();
  *                           example: "student001@example.com"
  *                         role:
  *                           type: string
- *                           enum: [STUDENT, ADMIN, SPSO]
+ *                           enum: [STUDENT, ADMIN]
  *                           example: "STUDENT"
  *         headers:
  *           Set-Cookie:

@@ -1,11 +1,12 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.util.js';
 import { UnauthorizedError } from '../errors/AppError.js';
+import type { UserRole } from '../types/permission.types.js';
 
 // Interface cho payload của JWT token
 export interface AuthPayload {
-  userID: string; // UUID string, not number
-  role: string;
+  userID: string; // UUID string
+  role: UserRole;
 }
 
 // Extend Express.Request để thêm field auth
@@ -135,9 +136,9 @@ export const authRequired = (
 /**
  * Middleware kiểm tra quyền: Kiểm tra req.auth.role
  * Nếu role không khớp, trả về 403 Forbidden
- * @param roles - Role(s) cần kiểm tra (ví dụ: 'ADMIN' hoặc ['ADMIN', 'SPSO'])
+ * @param roles - Role(s) cần kiểm tra (ví dụ: 'ADMIN' hoặc ['USER', 'ADMIN'])
  */
-export const requireRole = (...roles: string[]) => {
+export const requireRole = (...roles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.auth) {
       res.status(401).json({
@@ -157,4 +158,52 @@ export const requireRole = (...roles: string[]) => {
 
     next();
   };
+};
+
+/**
+ * Middleware kiểm tra quyền Admin
+ * Chỉ cho phép ADMIN truy cập
+ * STUDENT sẽ bị chặn với lỗi 403
+ */
+export const requireAdmin = requireRole('ADMIN');
+
+/**
+ * Middleware kiểm tra quyền Student hoặc Admin
+ * Cho phép cả STUDENT và ADMIN truy cập
+ */
+export const requireStudent = requireRole('STUDENT', 'ADMIN');
+
+/**
+ * Middleware chặn STUDENT truy cập admin routes
+ * Nếu STUDENT cố truy cập sẽ trả về 403 Forbidden
+ */
+export const blockStudentFromAdmin = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  if (!req.auth) {
+    res.status(401).json({
+      success: false,
+      message: 'Authentication required',
+    });
+    return;
+  }
+
+  // Chặn STUDENT truy cập admin routes
+  if (req.auth.role === 'STUDENT') {
+    console.warn('[auth-middleware] Student attempted to access admin route:', {
+      userID: req.auth.userID,
+      path: req.path,
+      method: req.method,
+    });
+    
+    res.status(403).json({
+      success: false,
+      message: 'Access denied. Admin privileges required.',
+    });
+    return;
+  }
+
+  next();
 };

@@ -11,7 +11,7 @@ import adminDashboardRoutes from './routes/admin/dashboardRoutes.js';
 import adminMapRoutes from './routes/admin/mapRoutes.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
-import { authRequired, requireRole } from './middleware/auth.js';
+import { authRequired, requireAdmin, blockStudentFromAdmin } from './middleware/auth.js';
 import userRouter from './routes/user.js';
 import documentRoutes from './routes/documents.js';
 import printJobRoutes from './routes/printJobs.js';
@@ -330,6 +330,13 @@ app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/api/admin/map', adminMapRoutes);
 app.use('/api/admin/users', authRequired, requireRole('ADMIN'), userRouter);
+
+import { requireAdmin, blockStudentFromAdmin } from './middleware/auth.js';
+
+// ... existing code ...
+
+// Admin routes - chặn STUDENT truy cập
+app.use('/admin/users', authRequired, blockStudentFromAdmin, requireAdmin, userRouter);
 
 // Auth routes
 app.use('/api/auth', authRoutes);

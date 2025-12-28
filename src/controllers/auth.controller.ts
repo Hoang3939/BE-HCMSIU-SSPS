@@ -27,12 +27,14 @@ export class AuthController {
     const result: LoginResponse = await AuthService.login(username, password, ipAddress, userAgent);
 
     // Set refresh token in HttpOnly cookie
+    // Note: path='/' allows middleware to check authentication
+    // Cookie is still secure (HttpOnly, Secure in production, SameSite=strict)
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
       sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Lax for development to allow cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      path: '/', // Set path to root so cookie is sent with all requests
+      path: '/', // Changed from '/api/auth' to '/' so middleware can check authentication
     });
 
     const response: ApiResponse<LoginResponse> = {
@@ -73,8 +75,8 @@ export class AuthController {
       res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        path: '/',
+        sameSite: 'strict',
+        path: '/', // Changed from '/api/auth' to '/' to match cookie path
       });
       throw new BadRequestError('Refresh token is required');
     }
@@ -95,8 +97,8 @@ export class AuthController {
         res.clearCookie('refreshToken', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-          path: '/',
+          sameSite: 'strict',
+          path: '/', // Changed from '/api/auth' to '/' to match cookie path
         });
       }
       // Re-throw to let error handler process it
@@ -119,8 +121,8 @@ export class AuthController {
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-      path: '/',
+      sameSite: 'strict',
+      path: '/', // Changed from '/api/auth' to '/' to match cookie path
     });
 
     const response: ApiResponse = {

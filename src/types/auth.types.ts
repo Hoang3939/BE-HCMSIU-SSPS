@@ -15,7 +15,7 @@ export interface LoginResponse {
     userID: string;
     username: string;
     email: string;
-    role: 'STUDENT' | 'ADMIN' | 'SPSO';
+    role: 'STUDENT' | 'ADMIN';
   };
 }
 
@@ -31,7 +31,7 @@ export interface UserPayload {
   userID: string;
   username: string;
   email: string;
-  role: 'STUDENT' | 'ADMIN' | 'SPSO';
+  role: 'STUDENT' | 'ADMIN';
 }
 
 export interface JWTPayload extends UserPayload {

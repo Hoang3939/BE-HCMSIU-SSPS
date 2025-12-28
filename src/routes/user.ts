@@ -154,7 +154,7 @@ router.get('/', async (req: Request, res: Response) => {
  *                 example: "password123"
  *               role:
  *                 type: string
- *                 enum: [ADMIN, STUDENT, SPSO]
+ *                 enum: [ADMIN, STUDENT]
  *                 description: Vai trò của người dùng
  *                 example: "STUDENT"
  *     responses:
@@ -216,8 +216,8 @@ router.post('/', async (req: Request, res: Response) => {
       throw new BadRequestError('Password là bắt buộc và phải có ít nhất 6 ký tự');
     }
 
-    if (!role || typeof role !== 'string' || !['ADMIN', 'STUDENT', 'SPSO'].includes(role.toUpperCase())) {
-      throw new BadRequestError('Role là bắt buộc và phải là một trong: ADMIN, STUDENT, SPSO');
+    if (!role || typeof role !== 'string' || !['ADMIN', 'STUDENT'].includes(role.toUpperCase())) {
+      throw new BadRequestError('Role là bắt buộc và phải là một trong: ADMIN, STUDENT');
     }
 
     const normalizedUsername = username.trim();
@@ -432,7 +432,7 @@ router.post('/', async (req: Request, res: Response) => {
  *                 example: "newpassword123"
  *               role:
  *                 type: string
- *                 enum: [ADMIN, STUDENT, SPSO]
+ *                 enum: [ADMIN, STUDENT]
  *                 description: Vai trò mới
  *                 example: "STUDENT"
  *               isActive:
@@ -532,8 +532,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // Update role if provided
     if (role !== undefined) {
-      if (typeof role !== 'string' || !['ADMIN', 'STUDENT', 'SPSO'].includes(role.toUpperCase())) {
-        throw new BadRequestError('Role phải là một trong: ADMIN, STUDENT, SPSO');
+      if (typeof role !== 'string' || !['ADMIN', 'STUDENT'].includes(role.toUpperCase())) {
+        throw new BadRequestError('Role phải là một trong: ADMIN, STUDENT');
       }
       updateFields.push('Role = @Role');
       request.input('Role', sql.NVarChar(50), role.toUpperCase());
