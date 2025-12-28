@@ -70,6 +70,12 @@ export class AuthController {
       refreshTokenPrefix: refreshTokenValue ? refreshTokenValue.substring(0, 20) + '...' : 'N/A',
     });
 
+    console.log('[AuthController] Refresh token request:', {
+      hasCookie: !!req.cookies?.refreshToken,
+      hasBody: !!req.body?.refreshToken,
+      cookieKeys: Object.keys(req.cookies || {}),
+    });
+
     if (!refreshToken) {
       // Clear cookie if it exists but is empty
       res.clearCookie('refreshToken', {
@@ -78,6 +84,7 @@ export class AuthController {
         sameSite: 'strict',
         path: '/', // Changed from '/api/auth' to '/' to match cookie path
       });
+      console.error('[AuthController] No refresh token found in cookie or body');
       throw new BadRequestError('Refresh token is required');
     }
 
@@ -97,8 +104,8 @@ export class AuthController {
         res.clearCookie('refreshToken', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
-          path: '/', // Changed from '/api/auth' to '/' to match cookie path
+          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+          path: '/', // Phải match với path khi set cookie
         });
       }
       // Re-throw to let error handler process it

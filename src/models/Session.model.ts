@@ -57,6 +57,12 @@ export class SessionModel {
     const normalizedRefreshToken = refreshToken.trim();
 
     const request = pool.request();
+    
+    // Trim và normalize token để tránh vấn đề whitespace
+    const normalizedToken = refreshToken.trim();
+    console.log('[SessionModel] Finding session by refresh token, token length:', normalizedToken.length);
+    
+    // Thử query với RTRIM/LTRIM để loại bỏ whitespace
     const result = await request
       .input('RefreshToken', sql.NVarChar(sql.MAX), normalizedRefreshToken)
       .query(`
@@ -70,7 +76,7 @@ export class SessionModel {
           IPAddress,
           UserAgent
         FROM Sessions
-        WHERE RefreshToken = @RefreshToken
+        WHERE LTRIM(RTRIM(RefreshToken)) = LTRIM(RTRIM(@RefreshToken))
           AND ExpiresAt > GETDATE()
       `);
 
@@ -93,6 +99,76 @@ export class SessionModel {
         message: totalCount > 0 ? 'Session exists but expired' : 'Session not found in database',
       });
 
+    console.log('[SessionModel] Query result:', {
+      recordCount: result.recordset.length,
+      hasRecords: result.recordset.length > 0,
+    });
+
+    // Nếu không tìm thấy với điều kiện ExpiresAt, thử tìm không có điều kiện để debug
+    if (result.recordset.length === 0) {
+      console.log('[SessionModel] No session found with ExpiresAt check, trying without...');
+      const resultWithoutExpiry = await request
+        .input('RefreshToken', sql.NVarChar(sql.MAX), normalizedToken)
+        .query(`
+          SELECT 
+            SessionID,
+            UserID,
+            Token,
+            RefreshToken,
+            ExpiresAt,
+            LastActivity,
+            IPAddress,
+            UserAgent
+          FROM Sessions
+          WHERE LTRIM(RTRIM(RefreshToken)) = LTRIM(RTRIM(@RefreshToken))
+        `);
+      
+      if (resultWithoutExpiry.recordset.length > 0) {
+        const row = resultWithoutExpiry.recordset[0];
+        const expiresAt = new Date(row.ExpiresAt);
+        const now = new Date();
+        console.log('[SessionModel] Found session but expired:', {
+          sessionID: row.SessionID,
+          expiresAt: expiresAt.toISOString(),
+          now: now.toISOString(),
+          isExpired: expiresAt <= now,
+          timeDiff: now.getTime() - expiresAt.getTime(),
+        });
+      } else {
+        console.log('[SessionModel] No session found at all with this refresh token');
+        // Debug: So sánh token trong cookie với token trong DB
+        try {
+          const debugSessions = await request
+            .input('TokenLength', sql.Int, normalizedToken.length)
+            .query(`
+              SELECT TOP 5 SessionID, UserID, LEN(RefreshToken) as TokenLength, 
+                     LEFT(RefreshToken, 50) as TokenStart, 
+                     RIGHT(RefreshToken, 50) as TokenEnd,
+                     ExpiresAt
+              FROM Sessions
+              WHERE LEN(RefreshToken) = @TokenLength
+              ORDER BY ExpiresAt DESC
+            `);
+          console.log('[SessionModel] Sessions with same token length:', debugSessions.recordset.length);
+          if (debugSessions.recordset.length > 0) {
+            const sample = debugSessions.recordset[0];
+            console.log('[SessionModel] Sample session:', {
+              sessionID: sample.SessionID,
+              userID: sample.UserID,
+              tokenLength: sample.TokenLength,
+              tokenStart: sample.TokenStart,
+              tokenEnd: sample.TokenEnd,
+              expiresAt: sample.ExpiresAt,
+            });
+            console.log('[SessionModel] Cookie token start:', normalizedToken.substring(0, 50));
+            console.log('[SessionModel] Cookie token end:', normalizedToken.substring(normalizedToken.length - 50));
+            console.log('[SessionModel] Tokens match?', sample.TokenStart === normalizedToken.substring(0, 50));
+          }
+        } catch (debugError) {
+          console.error('[SessionModel] Error in debug query:', debugError);
+        }
+      }
+      
       return null;
     }
 

@@ -3,7 +3,7 @@
  * Các hàm helper để hash và verify password
  */
 
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 

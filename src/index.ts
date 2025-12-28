@@ -8,7 +8,8 @@ import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
 import adminPrinterRoutes from './routes/admin/printerRoutes.js';
 import adminDashboardRoutes from './routes/admin/dashboardRoutes.js';
-import adminMapRoutes from './routes/admin/mapRoutes.js';
+import adminConfigRoutes from './routes/admin/configRoutes.js';
+import * as adminController from './controllers/admin.controller.js';
 import authRoutes from './routes/auth.routes.js';
 import { errorHandler } from './middleware/errorHandler.middleware.js';
 import { authRequired, requireAdmin, blockStudentFromAdmin } from './middleware/auth.js';
@@ -17,8 +18,9 @@ import documentRoutes from './routes/documents.js';
 import printJobRoutes from './routes/printJobs.js';
 import * as publicPrinterRoutes from './routes/printers.js';
 import studentRoutes from './routes/students.js';
-import paymentRoutes from './routes/payment.js';
 import * as mapController from './controllers/map.controller.js';
+import paymentRoutes from './routes/payment.js';
+import multer from 'multer';
 
 dotenv.config();
 
@@ -31,34 +33,59 @@ const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (like mobile apps, Postman, etc.)
     if (!origin) {
+      console.log('[CORS] Request with no origin, allowing...');
       return callback(null, true);
     }
 
+    console.log(`[CORS] Checking origin: ${origin}`);
+
     const allowedOrigins: string[] = [];
 
-    // Always allow localhost for development
+    // Always allow localhost for development (various ports)
     allowedOrigins.push('http://localhost:3000');
+    allowedOrigins.push('http://127.0.0.1:3000');
+    allowedOrigins.push('http://localhost:3001');
+    allowedOrigins.push('http://127.0.0.1:3001');
 
     // Add custom frontend URL if provided
     const frontendUrl = process.env.FRONTEND_URL;
     if (frontendUrl) {
       const urls = frontendUrl.includes(',')
         ? frontendUrl.split(',').map(url => url.trim())
-        : [frontendUrl];
+        : [frontendUrl.trim()];
       urls.forEach(url => {
-        if (!allowedOrigins.includes(url)) {
+        if (url && !allowedOrigins.includes(url)) {
           allowedOrigins.push(url);
+          // Also add without trailing slash
+          if (url.endsWith('/')) {
+            allowedOrigins.push(url.slice(0, -1));
+          } else {
+            allowedOrigins.push(url + '/');
+          }
         }
       });
     }
 
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
+    // Normalize origin (remove trailing slash for comparison)
+    const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+
+    // Check if origin is in allowed list (exact match or normalized)
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes(normalizedOrigin)) {
+      console.log(`[CORS] Origin allowed: ${origin}`);
       return callback(null, true);
+    }
+
+    // In development, allow all localhost origins
+    if (process.env.NODE_ENV !== 'production') {
+      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        console.log(`[CORS] Development mode: allowing localhost origin: ${origin}`);
+        return callback(null, true);
+      }
     }
 
     // Reject other origins
     console.warn(`[CORS] Blocked origin: ${origin}`);
+    console.warn(`[CORS] Allowed origins: ${allowedOrigins.join(', ')}`);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -73,24 +100,8 @@ console.log('[cors]: CORS configured - allowing localhost:3000 and FRONTEND_URL'
 app.use(express.json());
 app.use(cookieParser());
 
-// Request logging middleware (for debugging webhook) - Đặt SAU express.json() để body đã được parse
-app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path.includes('/sepay-webhook')) {
-    console.log('[Request]', {
-      method: req.method,
-      path: req.path,
-      url: req.url,
-      headers: {
-        authorization: req.headers.authorization ? 'Present' : 'Missing',
-        'content-type': req.headers['content-type'],
-        origin: req.headers.origin,
-        'user-agent': req.headers['user-agent'],
-      },
-      body: req.body,
-    });
-  }
-  next();
-});
+// ====== CORE PRINTING SERVICE ROUTES ======
+// Note: Routes are defined in their respective route files and mounted below
 
 // Configure Swagger using PORT from environment
 const swaggerOptions = {
@@ -325,6 +336,9 @@ const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // ====== API ROUTES ======
+// Public config route (for upload limits - no auth required)
+app.get('/api/config/upload-limits', adminController.getUploadLimits);
+
 // Admin routes
 app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
@@ -337,6 +351,7 @@ import { requireAdmin, blockStudentFromAdmin } from './middleware/auth.js';
 
 // Admin routes - chặn STUDENT truy cập
 app.use('/admin/users', authRequired, blockStudentFromAdmin, requireAdmin, userRouter);
+app.use('/api/admin/configs', adminConfigRoutes);
 
 // Auth routes
 app.use('/api/auth', authRoutes);
