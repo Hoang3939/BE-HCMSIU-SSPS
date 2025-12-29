@@ -142,15 +142,6 @@ export class AuthService {
       }
 
       // Step 2: Check if user still exists and is active (do this first to avoid unnecessary session recreation)
-      const user = await UserModel.findByUserID(decoded.userID);
-      if (!user) {
-        console.error('[auth-service]: User not found, userID:', decoded.userID);
-        throw new NotFoundError('User not found');
-        console.error('[AuthService] Token verification failed:', error);
-        throw new UnauthorizedError('Invalid or expired refresh token');
-      }
-
-      // Step 4: Check if user still exists and is active
       let user;
       try {
         user = await UserModel.findByUserID(decoded.userID);
@@ -168,6 +159,7 @@ export class AuthService {
         // Nếu là lỗi database khác, vẫn throw nhưng với message rõ ràng hơn
         throw new InternalServerError(`Error checking user: ${userError instanceof Error ? userError.message : 'Unknown error'}`);
       }
+      
       if (!user.isActive) {
         console.error('[auth-service]: User is inactive, userID:', decoded.userID);
         throw new UnauthorizedError('User account is inactive');
@@ -219,8 +211,17 @@ export class AuthService {
         role: user.role,
       };
 
-      const newAccessToken = generateAccessToken(userPayload);
-      console.log('[auth-service]: New access token generated');
+      // Generate new access token
+      let newAccessToken: string;
+      try {
+        newAccessToken = generateAccessToken(userPayload);
+        console.log('[auth-service]: New access token generated');
+      } catch (tokenError) {
+        console.error('[AuthService] Error generating access token:', {
+          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+        });
+        throw new InternalServerError(`Error generating access token: ${tokenError instanceof Error ? tokenError.message : 'Unknown error'}`);
+      }
 
       // Step 6: Update session with new access token
       // Access token expires in 15 minutes (matching JWT_ACCESS_EXPIRES_IN)
@@ -229,73 +230,8 @@ export class AuthService {
 
       await SessionModel.updateSession(session.sessionID, newAccessToken, expiresAt);
       console.log('[auth-service]: Session updated successfully');
-      let newAccessToken: string;
-      try {
-        newAccessToken = generateAccessToken(userPayload);
-      } catch (tokenError) {
-        console.error('[AuthService] Error generating access token:', {
-          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
-        });
-        throw new InternalServerError(`Error generating access token: ${tokenError instanceof Error ? tokenError.message : 'Unknown error'}`);
-      }
 
-      // Check session in database (optional - để update session nếu có)
-      // Wrap trong try-catch để không fail nếu có lỗi database
-      try {
-        let session = await SessionModel.findByRefreshToken(refreshToken);
-        
-        if (session) {
-          // Nếu có session, update với access token mới
-          console.log('[AuthService] Session found, updating with new access token, sessionID:', session.sessionID);
-          try {
-            const expiresAt = new Date();
-            expiresAt.setMinutes(expiresAt.getMinutes() + 15); // 15 minutes
-            await SessionModel.updateSession(session.sessionID, newAccessToken, expiresAt);
-            console.log('[AuthService] Session updated successfully');
-          } catch (updateError) {
-            // Nếu update session fail, log nhưng không throw (vì token đã được verify)
-            console.warn('[AuthService] Failed to update session, but token is valid, continuing...', {
-              error: updateError instanceof Error ? updateError.message : String(updateError),
-              sessionID: session.sessionID,
-            });
-          }
-        } else {
-          // Nếu không có session, tạo mới (fallback - không bắt buộc)
-          console.warn('[AuthService] Session not found but token is valid, creating new session...');
-          try {
-            // Xóa các session cũ của user này để tránh duplicate
-            await SessionModel.deleteAllUserSessions(decoded.userID);
-            
-            // Tạo session mới với refresh token và access token mới
-            const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 7); // 7 days for refresh token
-            
-            await SessionModel.createSession(
-              decoded.userID,
-              newAccessToken,
-              refreshToken,
-              expiresAt
-            );
-            
-            console.log('[AuthService] New session created successfully');
-          } catch (fallbackError) {
-            // Nếu tạo session thất bại, vẫn trả về access token (vì token đã được verify)
-            console.warn('[AuthService] Failed to create fallback session, but token is valid, continuing...', {
-              error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-              stack: fallbackError instanceof Error ? fallbackError.stack : undefined,
-            });
-            // Không throw error, vì token đã được verify và access token đã được tạo
-          }
-        }
-      } catch (sessionError) {
-        // Nếu có lỗi khi query session, log nhưng không throw (vì token đã được verify)
-        console.warn('[AuthService] Error checking/updating session, but token is valid, continuing...', {
-          error: sessionError instanceof Error ? sessionError.message : String(sessionError),
-          stack: sessionError instanceof Error ? sessionError.stack : undefined,
-        });
-      }
-
-      // Luôn trả về access token nếu token đã được verify
+      // Return new access token
       return {
         token: newAccessToken,
       };
