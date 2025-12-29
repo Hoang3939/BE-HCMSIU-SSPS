@@ -204,12 +204,17 @@ jobs:
         run: |
           echo "Đợi server khởi động..."
           
+          # Đảm bảo đang ở đúng thư mục project
+          cd "${{ github.workspace }}"
+          pwd
+          
           # Kiểm tra PM2 process trước
           echo "Kiểm tra PM2 process..."
-          pm2 status
+          pm2 status || echo "PM2 status check failed"
           
-          # Đợi PM2 process khởi động hoàn toàn
-          sleep 10
+          # Đợi PM2 process khởi động hoàn toàn (PM2 restart có thể mất thời gian)
+          echo "Đợi 15 giây để PM2 process khởi động hoàn toàn..."
+          sleep 15
           
           # Đọc PORT từ .env hoặc dùng mặc định
           port="3001"
@@ -223,29 +228,34 @@ jobs:
           echo "Sử dụng port: $port"
           echo "Kiểm tra server tại http://localhost:$port/health..."
           
-          max_attempts=30
+          max_attempts=40
           attempt=0
           success=false
           
           while [ $attempt -lt $max_attempts ]; do
-            # Kiểm tra xem PM2 process có đang chạy không
-            pm2_status=$(pm2 jlist | jq -r '.[] | select(.name=="backend-api") | .pm2_env.status' 2>/dev/null || echo "unknown")
-            if [ "$pm2_status" != "online" ]; then
-              echo "   PM2 process chưa online (status: $pm2_status), đợi thêm..."
+            # Kiểm tra PM2 process status (không dùng jq, dùng pm2 status trực tiếp)
+            pm2_status_output=$(pm2 status | grep "backend-api" || echo "")
+            if [ -z "$pm2_status_output" ]; then
+              echo "   PM2 process backend-api không tìm thấy, đợi thêm..."
               attempt=$((attempt + 1))
               sleep 2
               continue
             fi
             
-            # Thử kết nối đến health endpoint
-            if curl -f -s -m 5 http://localhost:$port/health > /dev/null 2>&1; then
-              echo "✅ Server đã sẵn sàng tại port $port!"
-              success=true
-              break
+            # Kiểm tra xem process có online không (từ pm2 status output)
+            if echo "$pm2_status_output" | grep -q "online"; then
+              # Process đang online, thử kết nối đến health endpoint
+              if curl -f -s -m 5 http://localhost:$port/health > /dev/null 2>&1; then
+                echo "✅ Server đã sẵn sàng tại port $port!"
+                success=true
+                break
+              fi
+            else
+              echo "   PM2 process chưa online, đợi thêm..."
             fi
             
             attempt=$((attempt + 1))
-            echo "   Thử lại lần $attempt/$max_attempts... (PM2 status: $pm2_status)"
+            echo "   Thử lại lần $attempt/$max_attempts..."
             sleep 2
           done
           
@@ -263,12 +273,18 @@ jobs:
             echo ""
             echo "Thử kiểm tra port $port thủ công:"
             curl -v http://localhost:$port/health || echo "curl failed"
+            echo ""
+            echo "Kiểm tra process đang listen trên port $port:"
+            netstat -tlnp | grep ":$port" || ss -tlnp | grep ":$port" || echo "Không tìm thấy process nào listen trên port $port"
             exit 1
           fi
 
       - name: Health check
         run: |
           echo "Kiểm tra health endpoint..."
+          
+          # Đảm bảo đang ở đúng thư mục project
+          cd "${{ github.workspace }}"
           
           # Đọc PORT từ .env hoặc dùng mặc định
           port="3001"
@@ -281,11 +297,15 @@ jobs:
           
           echo "Kiểm tra health endpoint tại http://localhost:$port/health..."
           
-          response=$(curl -s -m 10 http://localhost:$port/health 2>&1 || echo "ERROR")
+          # Thử kết nối với timeout và lưu response
+          response=$(curl -s -m 10 -w "\nHTTP_CODE:%{http_code}" http://localhost:$port/health 2>&1 || echo "ERROR")
+          http_code=$(echo "$response" | grep "HTTP_CODE" | cut -d':' -f2 || echo "")
+          response_body=$(echo "$response" | grep -v "HTTP_CODE" || echo "")
           
-          if [ "$response" = "ERROR" ] || echo "$response" | grep -q "ERROR"; then
+          if [ "$response" = "ERROR" ] || [ -z "$http_code" ] || [ "$http_code" != "200" ]; then
             echo "❌ Health check thất bại tại port $port"
-            echo "Response: $response"
+            echo "HTTP Code: $http_code"
+            echo "Response: $response_body"
             echo ""
             echo "PM2 status:"
             pm2 status
@@ -295,8 +315,8 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Health check response:"
-          echo "$response" | head -10
+          echo "✅ Health check response (HTTP $http_code):"
+          echo "$response_body" | head -10
           echo ""
           echo "✅ Health check thành công"
 
