@@ -48,6 +48,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.0.0",
     "express-validator": "^7.2.0",
+    "iconv-lite": "^0.6.3",
     "jsonwebtoken": "^9.0.2",
     "libreoffice-convert": "^1.7.0",
     "mssql": "^12.2.0",
