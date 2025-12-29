@@ -98,10 +98,40 @@ console.log('[cors]: CORS configured - allowing localhost:3000 and FRONTEND_URL'
 app.use(express.json());
 app.use(cookieParser());
 
-// Request logging middleware (for debugging webhook) - Đặt SAU express.json() để body đã được parse
+// Request logging middleware for debugging (đặt SAU express.json() và cookieParser())
 app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path.includes('/sepay-webhook')) {
+  // Log tất cả requests đến admin endpoints để debug
+  if (req.path.startsWith('/api/admin')) {
     console.log('[Request]', {
+      method: req.method,
+      path: req.path,
+      url: req.url,
+      origin: req.headers.origin,
+      authorization: req.headers.authorization ? 'Present' : 'Missing',
+      cookies: req.cookies ? Object.keys(req.cookies) : [],
+    });
+  }
+  next();
+});
+
+// Request logging middleware (for debugging) - Đặt SAU express.json() để body đã được parse
+app.use((req: Request, res: Response, next: NextFunction) => {
+  // Log tất cả requests đến admin endpoints để debug 404 errors
+  if (req.path.startsWith('/api/admin')) {
+    console.log('[Request] Admin API:', {
+      method: req.method,
+      path: req.path,
+      url: req.url,
+      origin: req.headers.origin,
+      authorization: req.headers.authorization ? 'Present' : 'Missing',
+      authHeader: req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'Missing',
+      cookies: req.cookies ? Object.keys(req.cookies) : [],
+    });
+  }
+  
+  // Log webhook requests
+  if (req.path.includes('/sepay-webhook')) {
+    console.log('[Request] Webhook:', {
       method: req.method,
       path: req.path,
       url: req.url,
