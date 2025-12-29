@@ -8,6 +8,7 @@ import * as dotenv from 'dotenv';
 import { connectDB, testConnection, closeDB } from './config/database.js';
 import adminPrinterRoutes from './routes/admin/printerRoutes.js';
 import adminDashboardRoutes from './routes/admin/dashboardRoutes.js';
+import adminMapRoutes from './routes/admin/mapRoutes.js';
 import adminConfigRoutes from './routes/admin/configRoutes.js';
 import * as adminController from './controllers/admin.controller.js';
 import authRoutes from './routes/auth.routes.js';
@@ -343,14 +344,7 @@ app.get('/api/config/upload-limits', adminController.getUploadLimits);
 app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/api/admin/map', adminMapRoutes);
-app.use('/api/admin/users', authRequired, requireRole('ADMIN'), userRouter);
-
-import { requireAdmin, blockStudentFromAdmin } from './middleware/auth.js';
-
-// ... existing code ...
-
-// Admin routes - chặn STUDENT truy cập
-app.use('/admin/users', authRequired, blockStudentFromAdmin, requireAdmin, userRouter);
+app.use('/api/admin/users', authRequired, blockStudentFromAdmin, requireAdmin, userRouter);
 app.use('/api/admin/configs', adminConfigRoutes);
 
 // Auth routes

@@ -32,7 +32,7 @@ export class AuthController {
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Lax for development to allow cross-origin
+      sameSite: 'strict', // Changed from conditional to 'strict' for Next.js middleware compatibility
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
       path: '/', // Changed from '/api/auth' to '/' so middleware can check authentication
     });
@@ -104,7 +104,7 @@ export class AuthController {
         res.clearCookie('refreshToken', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+          sameSite: 'strict', // Changed from conditional to 'strict' to match cookie path
           path: '/', // Phải match với path khi set cookie
         });
       }

@@ -98,6 +98,7 @@ export class SessionModel {
         totalSessionsWithThisToken: totalCount,
         message: totalCount > 0 ? 'Session exists but expired' : 'Session not found in database',
       });
+    }
 
     console.log('[SessionModel] Query result:', {
       recordCount: result.recordset.length,
