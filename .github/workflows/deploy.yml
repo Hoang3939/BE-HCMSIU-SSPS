@@ -1,0 +1,270 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: ["develop"]
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, backend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify Node.js and npm versions
+        run: |
+          node --version
+          npm --version
+
+      - name: Check for .env file
+        id: check-env
+        run: |
+          if [ -f .env ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "File .env đã tồn tại"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "File .env không tồn tại - cần tạo từ secrets hoặc script"
+          fi
+
+      - name: Create .env from secrets (if not exists)
+        if: steps.check-env.outputs.exists == 'false'
+        run: |
+          echo "Tạo file .env từ GitHub Secrets..."
+          cat > .env << EOF
+          # Database Configuration
+          DB_SERVER=${{ secrets.DB_SERVER }}
+          DB_DATABASE=${{ secrets.DB_DATABASE }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_PORT=${{ secrets.DB_PORT || '1433' }}
+          DB_ENCRYPT=${{ secrets.DB_ENCRYPT || 'false' }}
+          DB_TRUST_SERVER_CERTIFICATE=${{ secrets.DB_TRUST_SERVER_CERTIFICATE || 'true' }}
+          DB_CONNECTION_TIMEOUT=${{ secrets.DB_CONNECTION_TIMEOUT || '60000' }}
+          DB_REQUEST_TIMEOUT=${{ secrets.DB_REQUEST_TIMEOUT || '30000' }}
+
+          # Server Configuration
+          PORT=${{ secrets.PORT || '3001' }}
+          NODE_ENV=${{ secrets.NODE_ENV || 'production' }}
+          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+
+          # JWT Configuration
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_ACCESS_EXPIRES_IN=${{ secrets.JWT_ACCESS_EXPIRES_IN || '15m' }}
+          JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '7d' }}
+
+          # Bcrypt Configuration
+          BCRYPT_SALT_ROUNDS=${{ secrets.BCRYPT_SALT_ROUNDS || '10' }}
+
+          # Email Configuration (Optional - for password reset)
+          EMAIL_SERVICE=${{ secrets.EMAIL_SERVICE || 'gmail' }}
+          EMAIL_USER=${{ secrets.EMAIL_USER || '' }}
+          EMAIL_PASS=${{ secrets.EMAIL_PASS || '' }}
+
+          # Payment Configuration (Optional - for Sepay integration)
+          BANK_ID=${{ secrets.BANK_ID || 'BIDV' }}
+          ACCOUNT_NO=${{ secrets.ACCOUNT_NO || '96247SSPS' }}
+          TEMPLATE=${{ secrets.TEMPLATE || 'compact2' }}
+          SEPAY_API_KEY=${{ secrets.SEPAY_API_KEY || '' }}
+
+          # HCMSIU SSO Configuration (Optional - for future SSO integration)
+          # SSO_URL=${{ secrets.SSO_URL || '' }}
+          # SSO_API_KEY=${{ secrets.SSO_API_KEY || '' }}
+          EOF
+          echo "File .env đã được tạo từ secrets"
+
+      - name: Verify required environment variables
+        run: |
+          echo "Kiểm tra các biến môi trường bắt buộc..."
+          if [ ! -f .env ]; then
+            echo "File .env không tồn tại!"
+            exit 1
+          fi
+          
+          # Đọc và kiểm tra các biến bắt buộc từ file .env
+          # Các biến bắt buộc: Database và JWT secrets
+          required_vars=("DB_SERVER" "DB_DATABASE" "DB_USER" "DB_PASSWORD" "JWT_SECRET" "JWT_REFRESH_SECRET")
+          # Các biến tùy chọn nhưng nên có: FRONTEND_URL (cho CORS)
+          recommended_vars=("FRONTEND_URL")
+          missing_vars=()
+          missing_recommended=()
+          
+          for var in "${required_vars[@]}"; do
+            # Tìm biến trong file .env (bỏ qua comment và dòng trống)
+            if ! grep -q "^${var}=" .env 2>/dev/null; then
+              missing_vars+=("$var")
+            else
+              # Kiểm tra giá trị không rỗng
+              value=$(grep "^${var}=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -z "$value" ]; then
+                missing_vars+=("$var")
+              fi
+            fi
+          done
+          
+          # Kiểm tra các biến được khuyến nghị
+          for var in "${recommended_vars[@]}"; do
+            if ! grep -q "^${var}=" .env 2>/dev/null; then
+              missing_recommended+=("$var")
+            else
+              value=$(grep "^${var}=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -z "$value" ]; then
+                missing_recommended+=("$var")
+              fi
+            fi
+          done
+          
+          if [ ${#missing_vars[@]} -gt 0 ]; then
+            echo "Thiếu hoặc rỗng các biến môi trường bắt buộc: ${missing_vars[*]}"
+            echo "Vui lòng kiểm tra file .env hoặc GitHub Secrets"
+            exit 1
+          fi
+          
+          if [ ${#missing_recommended[@]} -gt 0 ]; then
+            echo "Cảnh báo: Thiếu các biến môi trường được khuyến nghị: ${missing_recommended[*]}"
+            echo "CORS có thể không hoạt động đúng nếu thiếu FRONTEND_URL"
+          fi
+          
+          echo "Tất cả biến môi trường bắt buộc đã được cấu hình"
+
+      - name: Clean previous build
+        run: |
+          echo "Dọn dẹp thư mục build cũ..."
+          if [ -d "dist" ]; then
+            rm -rf dist
+            echo "Đã xóa thư mục dist cũ"
+          fi
+
+      - name: Install Dependencies
+        run: |
+          echo "Cài đặt dependencies..."
+          npm ci --production=false
+          echo "Dependencies đã được cài đặt"
+
+      - name: Build TypeScript
+        run: |
+          echo "Build TypeScript..."
+          npm run build
+          
+          if [ ! -f "dist/index.js" ]; then
+            echo "Build thất bại: dist/index.js không tồn tại"
+            exit 1
+          fi
+          
+          echo "Build thành công"
+
+      - name: Verify build output
+        run: |
+          echo "Kiểm tra kết quả build..."
+          if [ -d "dist" ]; then
+            echo "Nội dung thư mục dist:"
+            ls -la dist/ | head -20
+            echo ""
+            echo "Build output hợp lệ"
+          else
+            echo "Thư mục dist không tồn tại"
+            exit 1
+          fi
+
+      - name: Stop existing PM2 process (if running)
+        run: |
+          echo "Dừng PM2 process cũ (nếu có)..."
+          pm2 stop backend-api 2>/dev/null || echo "Không có process nào đang chạy"
+          pm2 delete backend-api 2>/dev/null || echo "Không có process nào để xóa"
+
+      - name: Start/Restart Backend with PM2
+        run: |
+          echo "Khởi động backend với PM2..."
+          pm2 start dist/index.js --name "backend-api" --update-env
+          pm2 save
+          echo "Backend đã được khởi động"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Đợi server khởi động..."
+          sleep 5
+          
+          # Đọc PORT từ .env hoặc dùng mặc định
+          if [ -f .env ]; then
+            port=$(grep "^PORT=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "3001")
+          else
+            port="3001"
+          fi
+          
+          max_attempts=30
+          attempt=0
+          
+          echo "Kiểm tra server tại port $port..."
+          
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f http://localhost:$port/health > /dev/null 2>&1; then
+              echo "Server đã sẵn sàng!"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            echo "   Thử lại lần $attempt/$max_attempts..."
+            sleep 2
+          done
+          
+          echo "Server chưa phản hồi sau $max_attempts lần thử"
+          echo "Trạng thái PM2:"
+          pm2 status
+          echo "PM2 logs (50 dòng cuối):"
+          pm2 logs backend-api --lines 50 --nostream
+          exit 1
+
+      - name: Health check
+        run: |
+          echo "Kiểm tra health endpoint..."
+          
+          # Đọc PORT từ .env hoặc dùng mặc định
+          if [ -f .env ]; then
+            port=$(grep "^PORT=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "3001")
+          else
+            port="3001"
+          fi
+          
+          response=$(curl -s http://localhost:$port/health || echo "ERROR")
+          
+          if [ "$response" = "ERROR" ]; then
+            echo "Health check thất bại tại port $port"
+            pm2 logs backend-api --lines 20 --nostream
+            exit 1
+          fi
+          
+          echo "Health check response:"
+          echo "$response" | head -10
+          echo ""
+          echo "Health check thành công"
+
+      - name: Show PM2 status
+        run: |
+          echo "Trạng thái PM2:"
+          pm2 status
+          echo ""
+          echo "PM2 info:"
+          pm2 info backend-api
+
+      - name: Deployment summary
+        run: |
+          echo ""
+          echo "═══════════════════════════════════════════════════════════"
+          echo "DEPLOYMENT THÀNH CÔNG!"
+          echo "═══════════════════════════════════════════════════════════"
+          echo "Application: backend-api"
+          echo "Status: Running"
+          echo "Build: dist/index.js"
+          echo "Process Manager: PM2"
+          echo ""
+          echo "Để xem logs: pm2 logs backend-api"
+          echo "Để restart: pm2 restart backend-api"
+          echo "Để stop: pm2 stop backend-api"
+          echo "═══════════════════════════════════════════════════════════"
