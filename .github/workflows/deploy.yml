@@ -183,6 +183,8 @@ jobs:
       - name: Start/Restart Backend with PM2
         run: |
           echo "Khởi động backend với PM2..."
+          # PM2 sẽ tự động đọc biến môi trường từ file .env thông qua dotenv.config() trong code
+          # Flag --update-env đảm bảo PM2 cập nhật các biến môi trường từ shell environment
           pm2 start dist/index.js --name "backend-api" --update-env
           pm2 save
           echo "Backend đã được khởi động"
