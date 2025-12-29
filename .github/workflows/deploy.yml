@@ -159,11 +159,53 @@ jobs:
             rm -rf dist
             echo "Đã xóa thư mục dist cũ"
           fi
+          # Xóa node_modules để đảm bảo cài đặt lại sạch sẽ
+          if [ -d "node_modules" ]; then
+            rm -rf node_modules
+            echo "Đã xóa node_modules cũ"
+          fi
 
       - name: Install Dependencies
         run: |
           echo "Cài đặt dependencies..."
-          npm ci --production=false
+          
+          # Đảm bảo npm cache sạch sẽ
+          npm cache clean --force || true
+          
+          # Kiểm tra package-lock.json
+          if [ -f "package-lock.json" ]; then
+            echo "Tìm thấy package-lock.json, sử dụng npm ci..."
+            npm ci --production=false --legacy-peer-deps
+          else
+            echo "Không tìm thấy package-lock.json, sử dụng npm install..."
+            npm install --production=false --legacy-peer-deps
+          fi
+          
+          # Kiểm tra và cài đặt iconv-lite nếu thiếu (dependency quan trọng của body-parser)
+          if [ ! -d "node_modules/iconv-lite" ]; then
+            echo "⚠️  iconv-lite chưa được cài đặt, cài đặt thủ công..."
+            npm install iconv-lite --save --legacy-peer-deps
+          fi
+          
+          # Kiểm tra các dependencies quan trọng khác
+          echo "Kiểm tra các dependencies quan trọng..."
+          required_deps=("express" "body-parser" "iconv-lite" "raw-body")
+          missing_deps=()
+          for dep in "${required_deps[@]}"; do
+            if [ ! -d "node_modules/$dep" ]; then
+              echo "⚠️  $dep chưa được cài đặt"
+              missing_deps+=("$dep")
+            else
+              echo "✅ $dep đã được cài đặt"
+            fi
+          done
+          
+          # Cài đặt các dependencies còn thiếu
+          if [ ${#missing_deps[@]} -gt 0 ]; then
+            echo "Cài đặt các dependencies còn thiếu: ${missing_deps[*]}"
+            npm install "${missing_deps[@]}" --save --legacy-peer-deps
+          fi
+          
           echo "Dependencies đã được cài đặt"
 
       - name: Build TypeScript
