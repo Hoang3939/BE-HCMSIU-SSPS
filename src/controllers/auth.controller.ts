@@ -27,13 +27,21 @@ export class AuthController {
     const result: LoginResponse = await AuthService.login(username, password, ipAddress, userAgent);
 
     // Set refresh token in HttpOnly cookie
-    res.cookie('refreshToken', result.refreshToken, {
+    // Use domain: '.acdm.site' to share cookie across subdomains (api.acdm.site and ssps.acdm.site)
+    const cookieOptions: any = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Lax for development to allow cross-origin
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin in production, 'lax' for development
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
       path: '/', // Set path to root so cookie is sent with all requests
-    });
+    };
+    
+    // Set domain to share cookie across subdomains in production
+    if (process.env.NODE_ENV === 'production') {
+      cookieOptions.domain = '.acdm.site'; // Share cookie between api.acdm.site and ssps.acdm.site
+    }
+    
+    res.cookie('refreshToken', result.refreshToken, cookieOptions);
 
     const response: ApiResponse<LoginResponse> = {
       success: true,
