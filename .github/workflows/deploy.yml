@@ -143,6 +143,15 @@ jobs:
             echo "Đã xóa thư mục dist cũ"
           fi
 
+      - name: Upgrade Node.js to version 22
+        run: |
+          echo "Nâng cấp Node.js lên version 22..."
+          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+          sudo apt install -y nodejs
+          echo "Node.js version sau khi nâng cấp:"
+          node --version
+          npm --version
+
       - name: Install Dependencies
         run: |
           echo "Cài đặt dependencies..."
@@ -174,15 +183,11 @@ jobs:
             exit 1
           fi
 
-      - name: Stop existing PM2 process (if running)
-        run: |
-          echo "Dừng PM2 process cũ (nếu có)..."
-          pm2 stop backend-api 2>/dev/null || echo "Không có process nào đang chạy"
-          pm2 delete backend-api 2>/dev/null || echo "Không có process nào để xóa"
-
       - name: Start/Restart Backend with PM2
         run: |
           echo "Khởi động backend với PM2..."
+          # Xóa process cũ nếu có (không fail nếu không tồn tại)
+          pm2 delete backend-api || true
           # PM2 sẽ tự động đọc biến môi trường từ file .env thông qua dotenv.config() trong code
           # Flag --update-env đảm bảo PM2 cập nhật các biến môi trường từ shell environment
           pm2 start dist/index.js --name "backend-api" --update-env
