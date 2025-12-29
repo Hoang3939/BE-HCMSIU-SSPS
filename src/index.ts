@@ -53,6 +53,18 @@ const corsOptions = {
         if (!allowedOrigins.includes(url)) {
           allowedOrigins.push(url);
         }
+        // Tự động thêm https nếu có http (hoặc ngược lại) để hỗ trợ cả hai
+        if (url.startsWith('http://')) {
+          const httpsUrl = url.replace('http://', 'https://');
+          if (!allowedOrigins.includes(httpsUrl)) {
+            allowedOrigins.push(httpsUrl);
+          }
+        } else if (url.startsWith('https://')) {
+          const httpUrl = url.replace('https://', 'http://');
+          if (!allowedOrigins.includes(httpUrl)) {
+            allowedOrigins.push(httpUrl);
+          }
+        }
       });
     }
 

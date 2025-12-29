@@ -37,10 +37,12 @@ jobs:
             echo "File .env không tồn tại - cần tạo từ secrets hoặc script"
           fi
 
-      - name: Create .env from secrets (if not exists)
-        if: steps.check-env.outputs.exists == 'false'
+      - name: Create/Update .env from secrets
         run: |
-          echo "Tạo file .env từ GitHub Secrets..."
+          echo "Tạo/cập nhật file .env từ GitHub Secrets..."
+          echo "LƯU Ý: Đảm bảo đã cấu hình GitHub Secrets:"
+          echo "  - FRONTEND_URL=https://ssps.acdm.site (hoặc domain frontend của bạn)"
+          echo "  - NEXT_PUBLIC_API_BASE_URL=https://api.acdm.site (cho FE workflow)"
           cat > .env << EOF
           # Database Configuration
           DB_SERVER=${{ secrets.DB_SERVER }}
