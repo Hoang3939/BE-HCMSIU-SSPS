@@ -25,11 +25,18 @@ const dbConfig: sql.config = {
     trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE !== 'false',
     enableArithAbort: true,
     connectTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT || '60000'), // Additional connectTimeout
+    // Additional options to improve connection reliability
+    abortTransactionOnError: false,
+    useUTC: true,
+    // Enable TCP keep-alive to maintain connection
+    tdsVersion: '7_4',
   },
   pool: {
     max: 10,
     min: 0,
     idleTimeoutMillis: 30000,
+    // Increase acquire timeout for better connection handling
+    acquireTimeoutMillis: 60000,
   },
 };
 
@@ -37,82 +44,152 @@ const dbConfig: sql.config = {
 let pool: sql.ConnectionPool | null = null;
 
 /**
- * Connect to database
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Connect to database with retry mechanism
+ * @param retries Number of retry attempts (default: 3)
+ * @param retryDelay Delay between retries in milliseconds (default: 2000)
  * @returns Connection pool
  */
-export async function connectDB(): Promise<sql.ConnectionPool> {
-  try {
-    // Close existing pool if it exists but is not connected
-    if (pool && !pool.connected) {
-      try {
-        await pool.close();
-      } catch (e) {
-        // Ignore close errors
+export async function connectDB(retries: number = 3, retryDelay: number = 2000): Promise<sql.ConnectionPool> {
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Close existing pool if it exists but is not connected
+      if (pool && !pool.connected) {
+        try {
+          await pool.close();
+        } catch (e) {
+          // Ignore close errors
+        }
+        pool = null;
       }
-      pool = null;
-    }
 
-    if (pool && pool.connected) {
+      if (pool && pool.connected) {
+        return pool;
+      }
+
+      if (attempt === 1) {
+        console.log('[database]: Attempting to connect to database...');
+        console.log(`[database]: Server: ${dbConfig.server}:${dbConfig.port}`);
+        console.log(`[database]: Database: ${dbConfig.database}`);
+        console.log(`[database]: User: ${dbConfig.user}`);
+        console.log(`[database]: Connection timeout: ${dbConfig.connectionTimeout}ms`);
+      } else {
+        console.log(`[database]: Retry attempt ${attempt}/${retries}...`);
+      }
+
+      // Create new connection pool
+      pool = new sql.ConnectionPool(dbConfig);
+      
+      // Handle connection errors
+      pool.on('error', (err) => {
+        console.error('[database]: Connection pool error:', err);
+        // Reset pool on error
+        pool = null;
+      });
+
+      await pool.connect();
+      console.log('[database]: ✅ Connected to SQL Server successfully');
+      
       return pool;
+      } catch (error: any) {
+      lastError = error;
+      pool = null; // Reset pool on error
+      
+      // Extract more detailed error information
+      const errorCode = error.code || error.number || 'UNKNOWN';
+      const errorMessage = error.message || String(error);
+      const isNetworkError = errorCode === 'ESOCKET' || 
+                           errorCode === 'ETIMEOUT' || 
+                           errorCode === 'ECONNREFUSED' ||
+                           errorMessage.includes('Could not connect') ||
+                           errorMessage.includes('sequence');
+      
+      if (attempt < retries) {
+        console.error(`[database]: Connection attempt ${attempt} failed: ${errorMessage}`);
+        if (errorCode !== 'UNKNOWN') {
+          console.error(`[database]: Error code: ${errorCode}`);
+        }
+        console.log(`[database]: Retrying in ${retryDelay}ms...`);
+        await sleep(retryDelay);
+        // Exponential backoff: increase delay for each retry
+        retryDelay *= 1.5;
+      } else {
+        // Last attempt failed, show detailed error
+        console.error('[database]: ❌ Database connection error:', errorMessage);
+        if (errorCode !== 'UNKNOWN') {
+          console.error(`[database]: Error code: ${errorCode}`);
+        }
+        
+        if (isNetworkError) {
+          console.error('\n[database]: ⚠️  NETWORK CONNECTION ERROR DETECTED');
+          console.error('═══════════════════════════════════════════════════════════');
+          console.error(`[database]: Target: ${dbConfig.server}:${dbConfig.port}`);
+          console.error(`[database]: Database: ${dbConfig.database}`);
+          console.error(`[database]: User: ${dbConfig.user}`);
+          console.error(`[database]: Attempted: ${retries} times`);
+          console.error(`[database]: Error: ${errorMessage}`);
+          console.error('\n[database]: 🔍 POSSIBLE CAUSES:');
+          console.error('  1. ❌ SQL Server is not running or unavailable');
+          console.error('  2. 🔥 Firewall is blocking port 1433');
+          console.error('  3. 🔌 SQL Server TCP/IP protocol is not enabled');
+          console.error('  4. 📍 Incorrect IP address or port');
+          console.error('  5. 🌐 SQL Server does not allow remote connections');
+          console.error('  6. 🔐 Network/VPN connectivity issues');
+          console.error('  7. ⏱️  Connection timeout (server too slow to respond)');
+          console.error('\n[database]: 🛠️  TROUBLESHOOTING STEPS:');
+          console.error('\n  1️⃣  Test Network Connectivity:');
+          console.error(`     PowerShell: Test-NetConnection -ComputerName ${dbConfig.server} -Port ${dbConfig.port}`);
+          console.error(`     CMD: telnet ${dbConfig.server} ${dbConfig.port}`);
+          console.error(`     Ping: ping ${dbConfig.server}`);
+          console.error('\n  2️⃣  Check SQL Server Status (on server machine):');
+          console.error('     - Open SQL Server Configuration Manager');
+          console.error('     - SQL Server Services > Verify "SQL Server (MSSQLSERVER)" is Running');
+          console.error('     - If stopped, right-click > Start');
+          console.error('\n  3️⃣  Enable TCP/IP Protocol (on server machine):');
+          console.error('     - SQL Server Configuration Manager');
+          console.error('     - SQL Server Network Configuration > Protocols for MSSQLSERVER');
+          console.error('     - Right-click TCP/IP > Enable');
+          console.error('     - Restart SQL Server service');
+          console.error('\n  4️⃣  Configure SQL Server to Listen on Port 1433:');
+          console.error('     - SQL Server Configuration Manager');
+          console.error('     - SQL Server Network Configuration > Protocols > TCP/IP');
+          console.error('     - Properties > IP Addresses tab');
+          console.error('     - Scroll to "IPAll" section');
+          console.error('     - Set "TCP Dynamic Ports" to empty');
+          console.error('     - Set "TCP Port" to 1433');
+          console.error('     - Restart SQL Server service');
+          console.error('\n  5️⃣  Configure Windows Firewall (on server machine):');
+          console.error('     - Windows Defender Firewall > Advanced Settings');
+          console.error('     - Inbound Rules > New Rule');
+          console.error('     - Port > TCP > Specific: 1433');
+          console.error('     - Allow connection > Apply to all profiles');
+          console.error('\n  6️⃣  Enable SQL Server Authentication:');
+          console.error('     - SQL Server Management Studio (SSMS)');
+          console.error('     - Right-click server > Properties > Security');
+          console.error('     - Select "SQL Server and Windows Authentication mode"');
+          console.error('     - Restart SQL Server service');
+          console.error('     - Enable sa account: Security > Logins > sa > Properties > Status > Enabled');
+          console.error('\n  7️⃣  Check SQL Server Error Log:');
+          console.error('     - SSMS > Management > SQL Server Logs');
+          console.error('     - Look for connection-related errors');
+          console.error('\n  8️⃣  Alternative: Use Connection String with Instance Name:');
+          console.error(`     - If using named instance: ${dbConfig.server}\\INSTANCENAME`);
+          console.error('     - Update DB_SERVER in .env file');
+          console.error('═══════════════════════════════════════════════════════════\n');
+        }
+      }
     }
-
-    console.log('[database]: Attempting to connect to database...');
-    console.log(`[database]: Server: ${dbConfig.server}:${dbConfig.port}`);
-    console.log(`[database]: Database: ${dbConfig.database}`);
-    console.log(`[database]: User: ${dbConfig.user}`);
-    console.log(`[database]: Connection timeout: ${dbConfig.connectionTimeout}ms`);
-
-    // Create new connection pool
-    pool = new sql.ConnectionPool(dbConfig);
-    
-    // Handle connection errors
-    pool.on('error', (err) => {
-      console.error('[database]: Connection pool error:', err);
-      // Reset pool on error
-      pool = null;
-    });
-
-    await pool.connect();
-    console.log('[database]: Connected to SQL Server successfully');
-    
-    return pool;
-  } catch (error: any) {
-    console.error('[database]: Database connection error:', error.message || error);
-    
-    if (error.code === 'ESOCKET' || error.code === 'ETIMEOUT') {
-      console.error('\n[database]: Connection Error Diagnosis:');
-      console.error('═══════════════════════════════════════════════════════════');
-      console.error(`[database]: Connecting to: ${dbConfig.server}:${dbConfig.port}`);
-      console.error(`[database]: Database: ${dbConfig.database}`);
-      console.error(`[database]: User: ${dbConfig.user}`);
-      console.error('\n[database]: Possible causes:');
-      console.error('  1. SQL Server is not running or unavailable');
-      console.error('  2. Firewall is blocking port 1433');
-      console.error('  3. SQL Server TCP/IP protocol is not enabled');
-      console.error('  4. Incorrect IP address or port');
-      console.error('  5. SQL Server does not allow remote connections');
-      console.error('  6. Network or VPN issues');
-      console.error('\n[database]: Troubleshooting steps:');
-      console.error('  1. Check if SQL Server is running:');
-      console.error('     - Open SQL Server Configuration Manager');
-      console.error('     - Verify SQL Server Services are running');
-      console.error('  2. Check TCP/IP Protocol:');
-      console.error('     - SQL Server Configuration Manager > SQL Server Network Configuration');
-      console.error('     - Enable TCP/IP and restart SQL Server');
-      console.error('  3. Check Firewall:');
-      console.error('     - Allow port 1433 in Windows Firewall');
-      console.error('     - Or temporarily disable firewall for testing');
-      console.error('  4. Check network connectivity:');
-      console.error(`     - Run: ping ${dbConfig.server}`);
-      console.error(`     - Run: Test-NetConnection -ComputerName ${dbConfig.server} -Port ${dbConfig.port}`);
-      console.error('  5. Check SQL Server Authentication:');
-      console.error('     - Ensure SQL Server Authentication is enabled');
-      console.error('     - Verify sa account is activated');
-      console.error('═══════════════════════════════════════════════════════════\n');
-    }
-    
-    throw error;
   }
+  
+  throw lastError;
 }
 
 /**
@@ -147,11 +224,7 @@ export async function testConnection(): Promise<boolean> {
 }
 
 /**
-<<<<<<< HEAD
  * Get current connection pool with automatic reconnection
-=======
- * Get current connection pool
->>>>>>> 2979dbb (feat: implement authentication system with JWT tokens)
  */
 export async function getPool(): Promise<sql.ConnectionPool> {
   // Check if pool exists and is connected

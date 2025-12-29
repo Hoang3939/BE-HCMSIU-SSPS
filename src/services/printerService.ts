@@ -140,7 +140,7 @@ export async function getPrinters(params: PrinterQueryParams = {}): Promise<Pagi
   }
 
   if (params.search) {
-    whereConditions.push('(p.Name LIKE @search OR p.Brand LIKE @search OR p.Model LIKE @search)');
+    whereConditions.push('(p.Name LIKE @search OR p.Brand LIKE @search OR p.Model LIKE @search OR p.IPAddress LIKE @search)');
     const searchValue = `%${params.search}%`;
     countRequest.input('search', sql.NVarChar, searchValue);
     dataRequest.input('search', sql.NVarChar, searchValue);
