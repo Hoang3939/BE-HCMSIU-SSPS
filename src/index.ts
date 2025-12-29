@@ -21,6 +21,7 @@ import * as publicPrinterRoutes from './routes/printers.js';
 import studentRoutes from './routes/students.js';
 import * as mapController from './controllers/map.controller.js';
 import paymentRoutes from './routes/payment.js';
+import historyRoutes from './routes/history.js';
 import multer from 'multer';
 
 dotenv.config();
@@ -369,6 +370,9 @@ app.use('/api/student', studentRoutes);
 
 // Payment routes
 app.use('/api/payment', paymentRoutes);
+
+// History routes
+app.use('/api/history', historyRoutes);
 
 // Health check endpoint
 /**

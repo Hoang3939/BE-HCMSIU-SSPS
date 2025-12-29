@@ -7,22 +7,65 @@ import type { Printer, CreatePrinterDto, UpdatePrinterDto, PrinterQueryParams, P
  */
 
 /**
- * Validate if LocationID exists in PrinterLocations table
+ * Create or update PrinterLocation record and return LocationID
  */
-async function validateLocationID(locationID: string | null | undefined): Promise<void> {
-  if (!locationID) {
-    return; // null is allowed
+async function upsertPrinterLocation(
+  building: string | null | undefined,
+  room: string | null | undefined,
+  existingLocationID: string | null | undefined
+): Promise<string | null> {
+  // If both Building and Room are empty/null, return null (no location)
+  if (!building?.trim() && !room?.trim()) {
+    return null;
+  }
+
+  // If only one is provided, we still create a location (room can be empty)
+  const buildingValue = building?.trim() || '';
+  const roomValue = room?.trim() || '';
+
+  if (!buildingValue) {
+    // Building is required
+    return null;
   }
 
   const pool = await getPool();
-  const result = await pool
-    .request()
-    .input('locationID', sql.UniqueIdentifier, locationID)
-    .query('SELECT LocationID FROM PrinterLocations WHERE LocationID = @locationID');
-
-  if (result.recordset.length === 0) {
-    throw new Error(`LocationID '${locationID}' does not exist in PrinterLocations table`);
+  
+  // If we have an existing LocationID, update it
+  if (existingLocationID) {
+    const updateRequest = pool.request();
+    updateRequest.input('locationID', sql.UniqueIdentifier, existingLocationID);
+    updateRequest.input('building', sql.NVarChar, buildingValue);
+    updateRequest.input('room', sql.NVarChar, roomValue);
+    updateRequest.input('campus', sql.NVarChar, 'HCMSIU'); // Default campus
+    updateRequest.input('floor', sql.Int, 1); // Default floor, can be updated later via map
+    
+    await updateRequest.query(`
+      UPDATE PrinterLocations
+      SET Building = @building, Room = @room
+      WHERE LocationID = @locationID
+    `);
+    
+    return existingLocationID;
   }
+  
+  // Otherwise, create a new location
+  const createRequest = pool.request();
+  createRequest.input('building', sql.NVarChar, buildingValue);
+  createRequest.input('room', sql.NVarChar, roomValue);
+  createRequest.input('campus', sql.NVarChar, 'HCMSIU'); // Default campus
+  createRequest.input('floor', sql.Int, 1); // Default floor, can be updated later via map
+  
+  const result = await createRequest.query(`
+    INSERT INTO PrinterLocations (Campus, Building, Room, Floor)
+    OUTPUT INSERTED.LocationID
+    VALUES (@campus, @building, @room, @floor)
+  `);
+  
+  if (result.recordset.length === 0) {
+    throw new Error('Failed to create printer location');
+  }
+  
+  return result.recordset[0].LocationID;
 }
 
 /**
@@ -167,10 +210,13 @@ export async function getPrinters(params: PrinterQueryParams = {}): Promise<Pagi
       p.IPAddress,
       p.CUPSPrinterName,
       p.LocationID,
+      pl.Building,
+      pl.Room,
       p.IsActive,
       p.CreatedAt,
       p.UpdatedAt
     FROM Printers p
+    LEFT JOIN PrinterLocations pl ON p.LocationID = pl.LocationID
     ${whereClause}
     ORDER BY p.CreatedAt DESC
     OFFSET @offset ROWS
@@ -211,20 +257,23 @@ export async function getPrinterById(printerId: string): Promise<Printer | null>
     .input('printerId', sql.UniqueIdentifier, printerId)
     .query(`
       SELECT 
-        PrinterID,
-        Name,
-        Brand,
-        Model,
-        Description,
-        Status,
-        IPAddress,
-        CUPSPrinterName,
-        LocationID,
-        IsActive,
-        CreatedAt,
-        UpdatedAt
-      FROM Printers
-      WHERE PrinterID = @printerId
+        p.PrinterID,
+        p.Name,
+        p.Brand,
+        p.Model,
+        p.Description,
+        p.Status,
+        p.IPAddress,
+        p.CUPSPrinterName,
+        p.LocationID,
+        pl.Building,
+        pl.Room,
+        p.IsActive,
+        p.CreatedAt,
+        p.UpdatedAt
+      FROM Printers p
+      LEFT JOIN PrinterLocations pl ON p.LocationID = pl.LocationID
+      WHERE p.PrinterID = @printerId
     `);
 
   if (result.recordset.length === 0) {
@@ -252,24 +301,17 @@ export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
     await checkDuplicatePrinter(data.Name, data.IPAddress);
     console.log('[Backend Service] createPrinter: No duplicates found');
 
-    // Validate and normalize LocationID
-    // Convert empty strings, undefined, or whitespace-only strings to null
+    // Create or update PrinterLocation if Building/Room provided
     let locationIDValue: string | null = null;
-    if (data.LocationID) {
-      const trimmed = typeof data.LocationID === 'string' ? data.LocationID.trim() : '';
-      if (trimmed.length > 0) {
-        console.log('[Backend Service] createPrinter: Validating LocationID', trimmed);
-        // Validate LocationID format (must be valid UUID)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(trimmed)) {
-          throw new Error('Invalid LocationID format. Must be a valid UUID.');
-        }
-        await validateLocationID(trimmed);
-        locationIDValue = trimmed;
-        console.log('[Backend Service] createPrinter: LocationID validated', locationIDValue);
-      }
+    if (data.Building?.trim() || data.Room?.trim()) {
+      console.log('[Backend Service] createPrinter: Creating printer location', {
+        building: data.Building,
+        room: data.Room
+      });
+      locationIDValue = await upsertPrinterLocation(data.Building, data.Room, null);
+      console.log('[Backend Service] createPrinter: Location created', locationIDValue);
     } else {
-      console.log('[Backend Service] createPrinter: No LocationID provided, using null');
+      console.log('[Backend Service] createPrinter: No Building/Room provided, using null');
     }
 
     const request = pool.request();
@@ -310,8 +352,15 @@ export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
       throw new Error('Failed to create printer - no record returned');
     }
 
-    const printer = mapPrinterFromDb(result.recordset[0]);
-    console.log('[Backend Service] createPrinter: Printer mapped successfully', {
+    // Get the created printer with location data
+    const printerId = result.recordset[0].PrinterID;
+    const printer = await getPrinterById(printerId);
+    
+    if (!printer) {
+      throw new Error('Failed to retrieve created printer');
+    }
+    
+    console.log('[Backend Service] createPrinter: Printer created successfully', {
       printerID: printer.PrinterID,
       name: printer.Name
     });
@@ -381,18 +430,24 @@ export async function updatePrinter(printerId: string, data: UpdatePrinterDto): 
     updateFields.push('CUPSPrinterName = @cupsPrinterName');
     request.input('cupsPrinterName', sql.NVarChar, data.CUPSPrinterName);
   }
-  if (data.LocationID !== undefined) {
-    // Normalize LocationID: empty string becomes null
-    let locationIDValue: string | null = null;
-    if (data.LocationID && data.LocationID.trim().length > 0) {
-      // Validate LocationID format (must be valid UUID)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(data.LocationID.trim())) {
-        throw new Error('Invalid LocationID format. Must be a valid UUID.');
-      }
-      await validateLocationID(data.LocationID.trim());
-      locationIDValue = data.LocationID.trim();
+  // Handle Building and Room updates
+  if (data.Building !== undefined || data.Room !== undefined) {
+    // Get current printer to get existing LocationID
+    const currentPrinter = await getPrinterById(printerId);
+    if (!currentPrinter) {
+      return null;
     }
+    
+    // Use provided values or keep existing ones
+    const buildingValue = data.Building !== undefined ? data.Building : (currentPrinter.Building || '');
+    const roomValue = data.Room !== undefined ? data.Room : (currentPrinter.Room || '');
+    
+    // Create or update location
+    const locationIDValue = await upsertPrinterLocation(
+      buildingValue,
+      roomValue,
+      currentPrinter.LocationID
+    );
     
     updateFields.push('LocationID = @locationID');
     request.input('locationID', sql.UniqueIdentifier, locationIDValue);
@@ -439,7 +494,8 @@ export async function updatePrinter(printerId: string, data: UpdatePrinterDto): 
     return null;
   }
 
-  return mapPrinterFromDb(result.recordset[0]);
+  // Get updated printer with location data
+  return await getPrinterById(printerId);
 }
 
 /**
@@ -469,6 +525,8 @@ function mapPrinterFromDb(record: any): Printer {
     IPAddress: record.IPAddress,
     CUPSPrinterName: record.CUPSPrinterName,
     LocationID: record.LocationID,
+    Building: record.Building || null,
+    Room: record.Room || null,
     IsActive: record.IsActive,
     CreatedAt: record.CreatedAt,
     UpdatedAt: record.UpdatedAt,

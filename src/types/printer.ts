@@ -12,6 +12,8 @@ export interface Printer {
   IPAddress: string | null;
   CUPSPrinterName: string | null;
   LocationID: string | null;
+  Building: string | null;
+  Room: string | null;
   IsActive: boolean;
   CreatedAt: Date | string;
   UpdatedAt: Date | string;
@@ -25,7 +27,8 @@ export interface CreatePrinterDto {
   Status?: 'AVAILABLE' | 'BUSY' | 'OFFLINE' | 'MAINTENANCE' | 'ERROR';
   IPAddress?: string;
   CUPSPrinterName?: string;
-  LocationID?: string;
+  Building?: string;
+  Room?: string;
   IsActive?: boolean;
 }
 
@@ -37,7 +40,8 @@ export interface UpdatePrinterDto {
   Status?: 'AVAILABLE' | 'BUSY' | 'OFFLINE' | 'MAINTENANCE' | 'ERROR';
   IPAddress?: string;
   CUPSPrinterName?: string;
-  LocationID?: string | null;
+  Building?: string;
+  Room?: string;
   IsActive?: boolean;
 }
 

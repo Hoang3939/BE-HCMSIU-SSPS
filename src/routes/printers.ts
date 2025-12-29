@@ -55,11 +55,15 @@ export async function getAvailablePrinters(req: Request, res: Response) {
         p.Status as status,
         p.IPAddress,
         p.IsActive,
+        pl.Building,
+        pl.Room,
         CASE 
-          WHEN pl.Campus IS NOT NULL THEN 
-            CONCAT(pl.Campus, ' - ', pl.Building, ' - Phòng ', pl.Room)
-          ELSE 'Chưa xác định'
-        END as location
+          WHEN pl.Building IS NOT NULL AND pl.Room IS NOT NULL THEN 
+            CONCAT(pl.Building, pl.Room)
+          WHEN pl.Building IS NOT NULL THEN 
+            pl.Building
+          ELSE NULL
+        END as locationCode
       FROM Printers p
       LEFT JOIN PrinterLocations pl ON p.LocationID = pl.LocationID
       WHERE p.IsActive = 1 AND p.Status IN ('AVAILABLE', 'BUSY')
@@ -67,16 +71,24 @@ export async function getAvailablePrinters(req: Request, res: Response) {
     `);
 
     // Map to match frontend expected format
-    const printers = result.recordset.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      location: p.location || 'Chưa xác định',
-      status: p.status === 'AVAILABLE' ? 'ENABLED' : p.status,
-      brand: p.Brand,
-      model: p.Model,
-      ipAddress: p.IPAddress,
-      isActive: p.IsActive,
-    }));
+    // Display format: "name - BUILDINGROOM" (e.g., "test1 - LEW404")
+    const printers = result.recordset.map((p: any) => {
+      const locationCode = p.locationCode || '';
+      const displayName = locationCode 
+        ? `${p.name} - ${locationCode}`
+        : p.name;
+      
+      return {
+        id: p.id,
+        name: displayName,
+        location: locationCode || 'Chưa xác định',
+        status: p.status === 'AVAILABLE' ? 'ENABLED' : p.status,
+        brand: p.Brand,
+        model: p.Model,
+        ipAddress: p.IPAddress,
+        isActive: p.IsActive,
+      };
+    });
 
     return res.json(printers);
   } catch (error) {
