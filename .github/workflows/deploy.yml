@@ -22,6 +22,9 @@ jobs:
         run: |
           node --version
           npm --version
+          echo ""
+          echo "LƯU Ý: Nếu cần nâng cấp Node.js lên version 22, hãy chạy lệnh sau một lần duy nhất trên terminal của server:"
+          echo "   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs"
 
       - name: Check for .env file
         id: check-env
@@ -142,15 +145,6 @@ jobs:
             rm -rf dist
             echo "Đã xóa thư mục dist cũ"
           fi
-
-      - name: Upgrade Node.js to version 22
-        run: |
-          echo "Nâng cấp Node.js lên version 22..."
-          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-          sudo apt install -y nodejs
-          echo "Node.js version sau khi nâng cấp:"
-          node --version
-          npm --version
 
       - name: Install Dependencies
         run: |
