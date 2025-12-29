@@ -40,8 +40,15 @@ jobs:
       - name: Create/Update .env from secrets
         run: |
           echo "Tạo/cập nhật file .env từ GitHub Secrets..."
-          echo "LƯU Ý: Đảm bảo đã cấu hình GitHub Secrets:"
-          echo "  - FRONTEND_URL=https://ssps.acdm.site (hoặc domain frontend của bạn)"
+          echo "=========================================="
+          echo "LƯU Ý VỀ CLOUDFLARE TUNNEL:"
+          echo "  - Frontend: https://ssps.acdm.site -> tunnel -> localhost:3000"
+          echo "  - Backend: https://api.acdm.site -> tunnel -> localhost:3001"
+          echo "  - FRONTEND_URL phải là URL public: https://ssps.acdm.site"
+          echo "  - KHÔNG dùng localhost vì CORS sẽ chặn cross-origin requests"
+          echo "=========================================="
+          echo "Đảm bảo đã cấu hình GitHub Secrets:"
+          echo "  - FRONTEND_URL=https://ssps.acdm.site (URL public qua Cloudflare Tunnel)"
           echo "  - NEXT_PUBLIC_API_BASE_URL=https://api.acdm.site (cho FE workflow)"
           cat > .env << EOF
           # Database Configuration
@@ -55,10 +62,15 @@ jobs:
           DB_CONNECTION_TIMEOUT=${{ secrets.DB_CONNECTION_TIMEOUT || '60000' }}
           DB_REQUEST_TIMEOUT=${{ secrets.DB_REQUEST_TIMEOUT || '30000' }}
 
-          # Server Configuration
-          PORT=${{ secrets.PORT || '3001' }}
-          NODE_ENV=${{ secrets.NODE_ENV || 'production' }}
-          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+                 # Server Configuration
+                 PORT=${{ secrets.PORT || '3001' }}
+                 NODE_ENV=${{ secrets.NODE_ENV || 'production' }}
+                 # LƯU Ý: Khi sử dụng Cloudflare Tunnel:
+                 # - Frontend: https://ssps.acdm.site -> tunnel -> localhost:3000
+                 # - Backend: https://api.acdm.site -> tunnel -> localhost:3001
+                 # FRONTEND_URL phải là URL public qua Cloudflare Tunnel (https://ssps.acdm.site)
+                 # Để CORS cho phép requests từ frontend domain
+                 FRONTEND_URL=${{ secrets.FRONTEND_URL || 'https://ssps.acdm.site' }}
 
           # JWT Configuration
           JWT_SECRET=${{ secrets.JWT_SECRET }}
