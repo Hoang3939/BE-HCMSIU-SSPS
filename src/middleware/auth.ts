@@ -6,15 +6,9 @@ import type { UserRole } from '../types/permission.types.js';
 // Interface cho payload của JWT token
 export interface AuthPayload {
   userID: string; // UUID string
-  role: UserRole;
-import type { JWTPayload } from '../types/auth.types.js';
-
-// Interface cho payload của JWT token
-export interface AuthPayload {
-  userID: string;
   username: string;
   email: string;
-  role: string;
+  role: UserRole;
 }
 
 // Extend Express.Request để thêm field auth
@@ -68,46 +62,6 @@ export const authRequired = (
       return;
     }
 
-    const token = parts[1] as string;
-
-    // Verify và decode token
-    try {
-      // Lấy JWT_SECRET từ environment variable
-      const jwtSecretRaw = process.env.JWT_SECRET;
-      if (!jwtSecretRaw) {
-        console.error('[auth-middleware]: JWT_SECRET is not configured');
-        res.status(500).json({
-          success: false,
-          message: 'Server configuration error',
-        });
-        return;
-      }
-      // After the null check, jwtSecretRaw is definitely a string
-      // Verify token với issuer và audience (giống như trong jwt.util.ts)
-      const decoded = jwt.verify(token, jwtSecretRaw, {
-        issuer: 'hcmsiu-ssps',
-        audience: 'hcmsiu-ssps-users',
-      });
-      // Kiểm tra type và extract payload
-      if (typeof decoded === 'string' || !decoded || typeof decoded !== 'object') {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid token payload',
-        });
-        return;
-      }
-
-      // Type guard để đảm bảo decoded có đủ properties
-      // JWT token có userID (string UUID), không phải userId (number)
-      const payload = decoded as any; // Use any to access custom fields
-      if (!payload.userID || !payload.role) {
-        res.status(401).json({
-          success: false,
-          message: 'Token payload is missing required fields',
-        });
-        return;
-      }
-
     // Verify và decode token sử dụng JWT utility function
     try {
       // Verify token với cùng issuer và audience như khi tạo token
@@ -129,12 +83,10 @@ export const authRequired = (
 
       // Gán thông tin đã decode vào req.auth
       req.auth = {
-        userID: String(payload.userID), // Keep as string UUID
-        role: String(payload.role),
         userID: String(userID),
         username: String(username),
         email: String(email),
-        role: String(role),
+        role: String(role) as UserRole,
       };
 
       next();
