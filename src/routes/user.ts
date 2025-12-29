@@ -11,7 +11,7 @@ const router = Router();
 
 /**
  * @openapi
- * /api/admin/users:
+ * /admin/users:
  *   get:
  *     tags:
  *       - Admin - User Management
@@ -34,9 +34,6 @@ const router = Router();
  *                 success:
  *                   type: boolean
  *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Users retrieved successfully"
  *                 data:
  *                   type: array
  *                   items:
@@ -101,7 +98,6 @@ router.get('/', async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Users retrieved successfully',
       data: result.recordset,
     });
   } catch (error) {
@@ -154,7 +150,7 @@ router.get('/', async (req: Request, res: Response) => {
  *                 example: "password123"
  *               role:
  *                 type: string
- *                 enum: [ADMIN, STUDENT]
+ *                 enum: [ADMIN, STUDENT, SPSO]
  *                 description: Vai trò của người dùng
  *                 example: "STUDENT"
  *     responses:
@@ -216,8 +212,8 @@ router.post('/', async (req: Request, res: Response) => {
       throw new BadRequestError('Password là bắt buộc và phải có ít nhất 6 ký tự');
     }
 
-    if (!role || typeof role !== 'string' || !['ADMIN', 'STUDENT'].includes(role.toUpperCase())) {
-      throw new BadRequestError('Role là bắt buộc và phải là một trong: ADMIN, STUDENT');
+    if (!role || typeof role !== 'string' || !['ADMIN', 'STUDENT', 'SPSO'].includes(role.toUpperCase())) {
+      throw new BadRequestError('Role là bắt buộc và phải là một trong: ADMIN, STUDENT, SPSO');
     }
 
     const normalizedUsername = username.trim();
@@ -432,7 +428,7 @@ router.post('/', async (req: Request, res: Response) => {
  *                 example: "newpassword123"
  *               role:
  *                 type: string
- *                 enum: [ADMIN, STUDENT]
+ *                 enum: [ADMIN, STUDENT, SPSO]
  *                 description: Vai trò mới
  *                 example: "STUDENT"
  *               isActive:
@@ -532,8 +528,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // Update role if provided
     if (role !== undefined) {
-      if (typeof role !== 'string' || !['ADMIN', 'STUDENT'].includes(role.toUpperCase())) {
-        throw new BadRequestError('Role phải là một trong: ADMIN, STUDENT');
+      if (typeof role !== 'string' || !['ADMIN', 'STUDENT', 'SPSO'].includes(role.toUpperCase())) {
+        throw new BadRequestError('Role phải là một trong: ADMIN, STUDENT, SPSO');
       }
       updateFields.push('Role = @Role');
       request.input('Role', sql.NVarChar(50), role.toUpperCase());

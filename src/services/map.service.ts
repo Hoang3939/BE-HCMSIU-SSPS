@@ -220,6 +220,6 @@ export async function deleteMapLocation(printerId: string): Promise<boolean> {
     .input('printerId', sql.UniqueIdentifier, printerId)
     .query('DELETE FROM MapLocations WHERE PrinterID = @printerId');
 
-  return result.rowsAffected[0] > 0;
+  return (result.rowsAffected[0] ?? 0) > 0;
 }
 

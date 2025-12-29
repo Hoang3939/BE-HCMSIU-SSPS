@@ -30,8 +30,6 @@ export class AuthService {
       }
 
       if (!user) {
-        // Log để debug: User không tồn tại
-        console.log(`[AuthService] Login failed: User not found - Username/Email: ${username}`);
         throw new UnauthorizedError('Invalid username or password');
       }
 
@@ -40,8 +38,6 @@ export class AuthService {
       if (user.passwordHash) {
         const isValid = await verifyPassword(password, user.passwordHash);
         if (!isValid) {
-          // Log để debug: Password sai
-          console.log(`[AuthService] Login failed: Invalid password - Username: ${user.username}`);
           throw new UnauthorizedError('Invalid username or password');
         }
       } else {
@@ -49,14 +45,9 @@ export class AuthService {
         // TODO: Integrate with HCMSIU SSO service
         const isValid = await this.verifyWithSSO(username, password);
         if (!isValid) {
-          // Log để debug: SSO verification failed
-          console.log(`[AuthService] Login failed: SSO verification failed - Username: ${user.username}`);
           throw new UnauthorizedError('Invalid username or password');
         }
       }
-
-      // Log thành công
-      console.log(`[AuthService] Login successful - Username: ${user.username}, Role: ${user.role}`);
 
       // Generate JWT tokens
       const userPayload: UserPayload = {
@@ -74,7 +65,7 @@ export class AuthService {
       expiresAt.setDate(expiresAt.getDate() + 7);
 
       // Save session to database
-      const sessionID = await SessionModel.createSession(
+      await SessionModel.createSession(
         user.userID,
         accessToken,
         refreshToken,
@@ -82,12 +73,6 @@ export class AuthService {
         ipAddress,
         userAgent
       );
-      console.log('[AuthService] Session created:', {
-        sessionID,
-        userID: user.userID,
-        refreshTokenLength: refreshToken.length,
-        expiresAt: expiresAt.toISOString(),
-      });
 
       // Update LastLogin
       await UserModel.updateLastLogin(user.userID);
@@ -119,17 +104,10 @@ export class AuthService {
     }
 
     try {
-      if (!refreshToken) {
-        throw new UnauthorizedError('Refresh token is required');
-      }
-
-      console.log('[AuthService] Refreshing token, token length:', refreshToken.length);
-      
-      // Verify refresh token
+      // Step 1: Verify refresh token JWT signature and expiration
       let decoded;
       try {
         decoded = verifyRefreshToken(refreshToken);
-        console.log('[AuthService] Token verified, userID:', decoded.userID);
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes('expired')) {
@@ -203,7 +181,7 @@ export class AuthService {
         throw new UnauthorizedError('Session expired');
       }
 
-      // Generate new access token (token đã được verify, nên có thể tạo access token mới)
+      // Step 5: Generate new access token
       const userPayload: UserPayload = {
         userID: user.userID,
         username: user.username,
@@ -245,13 +223,9 @@ export class AuthService {
       console.error('[AuthService] Unexpected error refreshing token:', {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
-        errorType: error?.constructor?.name,
       });
-      
-      if (error instanceof UnauthorizedError || error instanceof NotFoundError || error instanceof InternalServerError) {
-        throw error;
-      }
-      throw new InternalServerError(`Error refreshing token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      throw new InternalServerError('Error refreshing token');
     }
   }
 

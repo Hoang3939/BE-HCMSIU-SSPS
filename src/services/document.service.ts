@@ -10,7 +10,6 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { countDocumentPages, convertToPdfWithLibreOffice } from '../utils/pageCounter.js';
 import { MAX_FILE_SIZE } from '../utils/fileUpload.js';
-import { getSystemConfigs } from './admin.service.js';
 import {
   BadRequestError,
   NotFoundError,
@@ -44,33 +43,14 @@ export class DocumentService {
       throw new BadRequestError('StudentId không hợp lệ');
     }
 
-    // Validate file size và file type - chỉ cho phép file <= max_file_size_mb và file type trong allowed list
-    // Lấy cấu hình từ SystemConfigs
-    const systemConfigs = await getSystemConfigs();
-    const maxFileSizeMB = systemConfigs.max_file_size_mb;
-    const maxFileSizeBytes = maxFileSizeMB * 1024 * 1024; // Convert MB to bytes
-    const allowedFileTypes = systemConfigs.allowed_file_types || [];
-    
-    // Validate file type
-    const fileExtension = path.extname(file.originalname).toLowerCase().replace('.', '');
-    if (!allowedFileTypes.includes(fileExtension)) {
-      // Clean up uploaded file
-      if (file.path && fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
-      }
-      throw new BadRequestError(
-        `Định dạng file "${fileExtension.toUpperCase()}" không được phép upload. Chỉ được phép upload các loại tệp: ${allowedFileTypes.map(t => t.toUpperCase()).join(', ')}`
-      );
-    }
-    
     // Validate file size
-    if (file.size > maxFileSizeBytes) {
+    if (file.size > MAX_FILE_SIZE) {
       // Clean up uploaded file
       if (file.path && fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
       }
       throw new BadRequestError(
-        `File quá lớn. Kích thước tối đa là ${maxFileSizeMB}MB (file hiện tại: ${(file.size / 1024 / 1024).toFixed(2)}MB)`
+        `File quá lớn. Dung lượng tối đa là ${MAX_FILE_SIZE / 1024 / 1024}MB`
       );
     }
 

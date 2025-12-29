@@ -134,14 +134,6 @@ export function verifyRefreshToken(token: string): JWTPayload {
     
     return decoded;
   } catch (error) {
-    // Log error for debugging
-    console.error('[jwt-util]: Refresh token verification failed:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      errorType: error instanceof jwt.TokenExpiredError ? 'TokenExpiredError' : 
-                 error instanceof jwt.JsonWebTokenError ? 'JsonWebTokenError' : 
-                 'Unknown',
-    });
-    
     if (error instanceof jwt.TokenExpiredError) {
       throw new Error('Refresh token expired');
     }
@@ -175,10 +167,10 @@ export function checkJwtSecrets(): { accessSecret: boolean; refreshSecret: boole
     getJwtRefreshSecret();
     return { accessSecret: true, refreshSecret: true };
   } catch (error) {
-    const accessSecret = process.env.JWT_SECRET && 
-      process.env.JWT_SECRET !== 'your-secret-key-change-in-production';
-    const refreshSecret = process.env.JWT_REFRESH_SECRET && 
-      process.env.JWT_REFRESH_SECRET !== 'your-refresh-secret-key-change-in-production';
+    const accessSecret = !!(process.env.JWT_SECRET && 
+      process.env.JWT_SECRET !== 'your-secret-key-change-in-production');
+    const refreshSecret = !!(process.env.JWT_REFRESH_SECRET && 
+      process.env.JWT_REFRESH_SECRET !== 'your-refresh-secret-key-change-in-production');
     
     if (!accessSecret || !refreshSecret) {
       console.warn('[jwt.util] ⚠️  WARNING: JWT secrets not properly configured!');

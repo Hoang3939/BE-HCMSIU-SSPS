@@ -3,9 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-// Max file size for multer middleware (set to a large value, actual validation is done in service)
-// Actual validation will check file size >= max_file_size_mb from SystemConfigs
-export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB (upper limit for multer)
+export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 // Allowed file types based on business rules
 export const ALLOWED_MIME_TYPES = [

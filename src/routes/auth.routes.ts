@@ -5,7 +5,9 @@
 
 import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller.js';
+import { PasswordController } from '../controllers/password.controller.js';
 import { validateLogin, validateRefreshToken } from '../middleware/validation.middleware.js';
+import { authRequired } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -80,7 +82,7 @@ const router = Router();
  *                           example: "student001@example.com"
  *                         role:
  *                           type: string
- *                           enum: [STUDENT, ADMIN]
+ *                           enum: [STUDENT, ADMIN, SPSO]
  *                           example: "STUDENT"
  *         headers:
  *           Set-Cookie:
@@ -269,6 +271,132 @@ router.post('/refresh-token', validateRefreshToken, AuthController.refreshToken)
  *                   example: "Internal Server Error"
  */
 router.post('/logout', AuthController.logout);
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset OTP
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "student@example.com"
+ *     responses:
+ *       200:
+ *         description: OTP sent successfully
+ *       400:
+ *         description: Invalid email format
+ *       404:
+ *         description: Email not found
+ */
+router.post('/forgot-password', PasswordController.requestPasswordReset);
+
+/**
+ * @swagger
+ * /api/auth/verify-otp:
+ *   post:
+ *     summary: Verify OTP code
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - otpCode
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               otpCode:
+ *                 type: string
+ *                 pattern: '^[0-9]{6}$'
+ *     responses:
+ *       200:
+ *         description: OTP verified successfully
+ *       401:
+ *         description: Invalid or expired OTP
+ */
+router.post('/verify-otp', PasswordController.verifyOTP);
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password after OTP verification
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userID
+ *               - newPassword
+ *               - confirmPassword
+ *             properties:
+ *               userID:
+ *                 type: string
+ *                 format: uuid
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *               confirmPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid input or passwords don't match
+ */
+router.post('/reset-password', PasswordController.resetPassword);
+
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   post:
+ *     summary: Change password (requires authentication)
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *               - confirmPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *               confirmPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       401:
+ *         description: Unauthorized or incorrect current password
+ */
+router.post('/change-password', authRequired, PasswordController.changePassword);
 
 export default router;
 

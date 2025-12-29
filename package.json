@@ -8,9 +8,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "seed:admin": "tsx scripts/seed-admin.ts",
-    "test:semester-pages": "tsx scripts/test-semester-page-allocation.ts",
-    "test:semester2-pages": "tsx scripts/test-allocate-semester2-pages.ts"
+    "generate-env": "node scripts/generate-env.cjs",
+    "update-jwt-secrets": "node scripts/update-jwt-secrets.cjs",
+    "generate-seed-data": "node scripts/generate-seed-data.cjs"
   },
   "repository": {
     "type": "git",
@@ -24,7 +24,7 @@
   },
   "homepage": "https://github.com/Hoang3939/BE-HCMSIU-SSPS#readme",
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
@@ -33,6 +33,7 @@
     "@types/mssql": "^9.1.8",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.19.3",
+    "@types/nodemailer": "^6.4.14",
     "@types/pdf-parse": "^1.1.5",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
@@ -40,19 +41,20 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
+    "@react-google-maps/api": "^2.20.8",
+    "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.0.0",
-    "express-validator": "^7.3.1",
-    "jsonwebtoken": "^9.0.3",
+    "express-validator": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
     "libreoffice-convert": "^1.7.0",
     "mssql": "^12.2.0",
     "multer": "^2.0.2",
+    "nodemailer": "^6.9.8",
     "pdf-parse": "^1.1.4",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1",
-    "xlsx": "^0.18.5"
+    "swagger-ui-express": "^5.0.1"
   }
 }

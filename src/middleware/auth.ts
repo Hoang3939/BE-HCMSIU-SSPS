@@ -1,14 +1,11 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.util.js';
 import { UnauthorizedError } from '../errors/AppError.js';
-import type { UserRole } from '../types/permission.types.js';
 
 // Interface cho payload của JWT token
 export interface AuthPayload {
   userID: string; // UUID string
-  username: string;
-  email: string;
-  role: UserRole;
+  role: string;
 }
 
 // Extend Express.Request để thêm field auth
@@ -41,20 +38,8 @@ export const authRequired = (
     }
 
     // Kiểm tra format "Bearer <token>"
-    // Xử lý trường hợp có nhiều "Bearer" (ví dụ: "Bearer Bearer <token>")
-    const parts = authHeader.trim().split(/\s+/);
-    
-    // Loại bỏ tất cả "Bearer" ở đầu, chỉ lấy token cuối cùng
-    let token: string | undefined;
-    for (let i = parts.length - 1; i >= 0; i--) {
-      const part = parts[i];
-      if (part && part !== 'Bearer' && part.length > 0) {
-        token = part;
-        break;
-      }
-    }
-
-    if (!token) {
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
       res.status(401).json({
         success: false,
         message: 'Invalid authorization format. Expected: Bearer <token>',
@@ -62,31 +47,24 @@ export const authRequired = (
       return;
     }
 
-    // Verify và decode token sử dụng JWT utility function
+    const token = parts[1] as string;
+
+    if (!token || token.trim().length === 0) {
+      res.status(401).json({
+        success: false,
+        message: 'Token is missing',
+      });
+      return;
+    }
+
+    // Verify token sử dụng JWT utility function
     try {
-      // Verify token với cùng issuer và audience như khi tạo token
-      const payload = verifyAccessToken(token);
-      
-      // Extract thông tin từ payload
-      const userID = payload.userID;
-      const username = payload.username || '';
-      const email = payload.email || '';
-      const role = payload.role;
-      
-      if (!userID || !role) {
-        res.status(401).json({
-          success: false,
-          message: 'Token payload is missing required fields (userID and role)',
-        });
-        return;
-      }
+      const decoded = verifyAccessToken(token);
 
       // Gán thông tin đã decode vào req.auth
       req.auth = {
-        userID: String(userID),
-        username: String(username),
-        email: String(email),
-        role: String(role) as UserRole,
+        userID: String(decoded.userID),
+        role: String(decoded.role),
       };
 
       next();
@@ -131,9 +109,9 @@ export const authRequired = (
 /**
  * Middleware kiểm tra quyền: Kiểm tra req.auth.role
  * Nếu role không khớp, trả về 403 Forbidden
- * @param roles - Role(s) cần kiểm tra (ví dụ: 'ADMIN' hoặc ['USER', 'ADMIN'])
+ * @param roles - Role(s) cần kiểm tra (ví dụ: 'ADMIN' hoặc ['ADMIN', 'SPSO'])
  */
-export const requireRole = (...roles: UserRole[]) => {
+export const requireRole = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.auth) {
       res.status(401).json({
@@ -153,52 +131,4 @@ export const requireRole = (...roles: UserRole[]) => {
 
     next();
   };
-};
-
-/**
- * Middleware kiểm tra quyền Admin
- * Chỉ cho phép ADMIN truy cập
- * STUDENT sẽ bị chặn với lỗi 403
- */
-export const requireAdmin = requireRole('ADMIN');
-
-/**
- * Middleware kiểm tra quyền Student hoặc Admin
- * Cho phép cả STUDENT và ADMIN truy cập
- */
-export const requireStudent = requireRole('STUDENT', 'ADMIN');
-
-/**
- * Middleware chặn STUDENT truy cập admin routes
- * Nếu STUDENT cố truy cập sẽ trả về 403 Forbidden
- */
-export const blockStudentFromAdmin = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  if (!req.auth) {
-    res.status(401).json({
-      success: false,
-      message: 'Authentication required',
-    });
-    return;
-  }
-
-  // Chặn STUDENT truy cập admin routes
-  if (req.auth.role === 'STUDENT') {
-    console.warn('[auth-middleware] Student attempted to access admin route:', {
-      userID: req.auth.userID,
-      path: req.path,
-      method: req.method,
-    });
-    
-    res.status(403).json({
-      success: false,
-      message: 'Access denied. Admin privileges required.',
-    });
-    return;
-  }
-
-  next();
 };

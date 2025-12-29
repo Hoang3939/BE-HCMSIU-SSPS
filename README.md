@@ -36,9 +36,8 @@ cp .env.example .env
 ```
 
 ```env
-PORT=3001
+PORT=3000
 NODE_ENV=development
-FRONTEND_URL=http://localhost:3000
 ```
 
 ---
@@ -60,54 +59,7 @@ npm run start
 
 ## 📖 Swagger API
 ```text
-http://localhost:3001/api-docs
-```
-
----
-
-## 🔌 Kết nối API với Frontend
-
-Backend đã được cấu hình sẵn để kết nối với Frontend. Xem chi tiết tại:
-
-- **[API_CLIENT.md](./API_CLIENT.md)** - Hướng dẫn chi tiết kết nối API
-- **frontend-api-client.ts** - API Client helper cho Frontend (TypeScript)
-- **frontend-types.ts** - TypeScript types cho Frontend
-
-### Quick Start
-
-1. **Copy API client vào project Frontend:**
-   ```bash
-   cp frontend-api-client.ts /path/to/your/frontend/src/api/client.ts
-   ```
-
-2. **Cấu hình API URL trong Frontend:**
-   ```env
-   # .env.local (React/Next.js)
-   REACT_APP_API_URL=http://localhost:3001
-   # hoặc
-   NEXT_PUBLIC_API_URL=http://localhost:3001
-   ```
-
-3. **Sử dụng trong code:**
-   ```typescript
-   import { apiClient } from './api/client';
-   
-   // Login
-   const response = await apiClient.login({
-     username: 'student001',
-     password: 'password'
-   });
-   ```
-
-### CORS Configuration
-
-Backend đã cấu hình CORS để cho phép:
-- `http://localhost:3000` (mặc định)
-- URL từ biến môi trường `FRONTEND_URL`
-
-Thêm frontend URL vào `.env`:
-```env
-FRONTEND_URL=http://localhost:3000,https://your-frontend-domain.com
+http://localhost:3000/api-docs
 ```
 
 ---

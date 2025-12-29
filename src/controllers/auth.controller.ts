@@ -27,14 +27,12 @@ export class AuthController {
     const result: LoginResponse = await AuthService.login(username, password, ipAddress, userAgent);
 
     // Set refresh token in HttpOnly cookie
-    // Note: path='/' allows middleware to check authentication
-    // Cookie is still secure (HttpOnly, Secure in production, SameSite=strict)
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // Chỉ gửi qua HTTPS trong production
-      sameSite: 'strict', // Changed from conditional to 'strict' for Next.js middleware compatibility
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // Lax for development to allow cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      path: '/', // Changed from '/api/auth' to '/' so middleware can check authentication
+      path: '/', // Set path to root so cookie is sent with all requests
     });
 
     const response: ApiResponse<LoginResponse> = {
@@ -52,13 +50,6 @@ export class AuthController {
   static refreshToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     // Get refresh token from cookie (preferred) or body
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    
-    console.log('[auth-controller]: Refresh token request received:', {
-      hasCookie: !!req.cookies?.refreshToken,
-      hasBodyToken: !!req.body?.refreshToken,
-      cookieKeys: req.cookies ? Object.keys(req.cookies) : [],
-      allCookies: req.cookies,
-    });
 
     // Debug logging
     const refreshTokenValue = req.cookies?.refreshToken || req.body?.refreshToken;
@@ -70,21 +61,14 @@ export class AuthController {
       refreshTokenPrefix: refreshTokenValue ? refreshTokenValue.substring(0, 20) + '...' : 'N/A',
     });
 
-    console.log('[AuthController] Refresh token request:', {
-      hasCookie: !!req.cookies?.refreshToken,
-      hasBody: !!req.body?.refreshToken,
-      cookieKeys: Object.keys(req.cookies || {}),
-    });
-
     if (!refreshToken) {
       // Clear cookie if it exists but is empty
       res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/', // Changed from '/api/auth' to '/' to match cookie path
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/',
       });
-      console.error('[AuthController] No refresh token found in cookie or body');
       throw new BadRequestError('Refresh token is required');
     }
 
@@ -104,8 +88,8 @@ export class AuthController {
         res.clearCookie('refreshToken', {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict', // Changed from conditional to 'strict' to match cookie path
-          path: '/', // Phải match với path khi set cookie
+          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+          path: '/',
         });
       }
       // Re-throw to let error handler process it
@@ -128,8 +112,8 @@ export class AuthController {
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/', // Changed from '/api/auth' to '/' to match cookie path
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      path: '/',
     });
 
     const response: ApiResponse = {
