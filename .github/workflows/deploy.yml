@@ -179,14 +179,12 @@ jobs:
 
       - name: Start/Restart Backend with PM2
         run: |
-          echo "Khởi động backend với PM2..."
-          # Xóa process cũ nếu có (không fail nếu không tồn tại)
-          pm2 delete backend-api || true
-          # PM2 sẽ tự động đọc biến môi trường từ file .env thông qua dotenv.config() trong code
-          # Flag --update-env đảm bảo PM2 cập nhật các biến môi trường từ shell environment
-          pm2 start dist/index.js --name "backend-api" --update-env
+          echo "Khởi động/restart backend với PM2..."
+          # Dùng restart để giữ nguyên ID và cấu hình, chỉ cập nhật code mới
+          # Nếu process chưa tồn tại thì start mới
+          pm2 restart backend-api --update-env || pm2 start dist/index.js --name "backend-api" --update-env
           pm2 save
-          echo "Backend đã được khởi động"
+          echo "Backend đã được khởi động/restart"
 
       - name: Wait for server to be ready
         run: |
