@@ -50,10 +50,14 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
       activePrinters: stats.activePrinters,
       totalStudents: stats.totalStudents,
     });
-    res.status(200).json({
+    
+    const response = {
       success: true,
       data: stats,
-    });
+    };
+    
+    console.log('[adminController] Sending response:', JSON.stringify(response));
+    res.status(200).json(response);
   } catch (error) {
     console.error('[adminController] Error getting dashboard stats:', error);
     console.error('[adminController] Error stack:', error instanceof Error ? error.stack : undefined);
@@ -109,10 +113,13 @@ export async function getRecentActivities(req: Request, res: Response): Promise<
       createdAt: activity.createdAt.toISOString(),
     }));
 
-    res.status(200).json({
+    const response = {
       success: true,
       data: serializedActivities,
-    });
+    };
+    
+    console.log('[adminController] Sending response with', serializedActivities.length, 'activities');
+    res.status(200).json(response);
   } catch (error) {
     console.error('[adminController] Error getting recent activities:', error);
     console.error('[adminController] Error stack:', error instanceof Error ? error.stack : undefined);
