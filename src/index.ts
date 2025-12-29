@@ -21,6 +21,7 @@ import paymentRoutes from './routes/payment.js';
 import historyRoutes from './routes/history.js';
 import multer from 'multer';
 import configRoutes from './routes/config.routes.js';
+import adminConfigRoutes from './routes/admin/configRoutes.js';
 import * as mapController from './controllers/map.controller.js';
 
 dotenv.config();
@@ -332,7 +333,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 app.use('/api/admin/printers', adminPrinterRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/api/admin/map', adminMapRoutes);
-app.use('/admin/users', authRequired, requireRole('ADMIN'), userRouter);
+app.use('/api/admin/users', authRequired, requireRole('ADMIN'), userRouter);
+app.use('/api/admin/configs', authRequired, requireRole('ADMIN'), adminConfigRoutes);
 
 // Auth routes
 app.use('/api/auth', authRoutes);
