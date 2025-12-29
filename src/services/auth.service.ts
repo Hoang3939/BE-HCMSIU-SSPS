@@ -23,31 +23,58 @@ export class AuthService {
     userAgent?: string
   ): Promise<LoginResponse> {
     try {
+      // Trim whitespace from username and password
+      const trimmedUsername = username?.trim();
+      const trimmedPassword = password?.trim();
+      
+      console.log('[AuthService] Login attempt:', {
+        username: trimmedUsername,
+        usernameLength: trimmedUsername?.length,
+        passwordLength: trimmedPassword?.length,
+        hasPassword: !!trimmedPassword,
+      });
+
       // Find user by username or email
-      let user = await UserModel.findByUsername(username);
+      let user = await UserModel.findByUsername(trimmedUsername);
       if (!user) {
-        user = await UserModel.findByEmail(username);
+        console.log('[AuthService] User not found by username, trying email...');
+        user = await UserModel.findByEmail(trimmedUsername);
       }
 
       if (!user) {
+        console.log('[AuthService] ❌ User not found:', trimmedUsername);
         throw new UnauthorizedError('Invalid username or password');
       }
+
+      console.log('[AuthService] ✅ User found:', {
+        userID: user.userID,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        hasPasswordHash: !!user.passwordHash,
+      });
 
       // Verify password
       // If PasswordHash exists in database, verify with bcrypt
       if (user.passwordHash) {
-        const isValid = await verifyPassword(password, user.passwordHash);
+        const isValid = await verifyPassword(trimmedPassword, user.passwordHash);
+        console.log('[AuthService] Password verification result:', isValid);
         if (!isValid) {
+          console.log('[AuthService] ❌ Password verification failed');
           throw new UnauthorizedError('Invalid username or password');
         }
       } else {
         // If no PasswordHash, try SSO integration
         // TODO: Integrate with HCMSIU SSO service
-        const isValid = await this.verifyWithSSO(username, password);
+        console.log('[AuthService] No passwordHash, trying SSO...');
+        const isValid = await this.verifyWithSSO(trimmedUsername, trimmedPassword);
         if (!isValid) {
+          console.log('[AuthService] ❌ SSO verification failed');
           throw new UnauthorizedError('Invalid username or password');
         }
       }
+      
+      console.log('[AuthService] ✅ Login successful for user:', user.username);
 
       // Generate JWT tokens
       const userPayload: UserPayload = {
