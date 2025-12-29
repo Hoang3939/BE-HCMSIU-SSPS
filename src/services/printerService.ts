@@ -26,6 +26,92 @@ async function validateLocationID(locationID: string | null | undefined): Promis
 }
 
 /**
+ * Check if a printer with the same Name or IPAddress already exists
+ * @throws Error with code 'DUPLICATE_NAME' or 'DUPLICATE_IP' if duplicate found
+ */
+async function checkDuplicatePrinter(name: string, ipAddress: string | null | undefined, excludePrinterId?: string): Promise<void> {
+  console.log('[Backend Service] checkDuplicatePrinter: Starting check', {
+    name,
+    ipAddress,
+    excludePrinterId
+  });
+  
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+    
+    // Check for duplicate Name
+    let nameQuery = 'SELECT PrinterID, Name FROM Printers WHERE Name = @name';
+    if (excludePrinterId) {
+      nameQuery += ' AND PrinterID != @excludePrinterId';
+      request.input('excludePrinterId', sql.UniqueIdentifier, excludePrinterId);
+    }
+    request.input('name', sql.NVarChar, name);
+    
+    console.log('[Backend Service] checkDuplicatePrinter: Checking duplicate name', nameQuery);
+    const nameResult = await request.query(nameQuery);
+    console.log('[Backend Service] checkDuplicatePrinter: Name check result', {
+      recordCount: nameResult.recordset.length,
+      records: nameResult.recordset
+    });
+    
+    if (nameResult.recordset.length > 0) {
+      const error: any = new Error(`A printer with the name "${name}" already exists`);
+      error.code = 'DUPLICATE_NAME';
+      console.log('[Backend Service] checkDuplicatePrinter: Duplicate name found', error);
+      throw error;
+    }
+    
+    // Check for duplicate IPAddress (only if IPAddress is provided and not empty)
+    // NOTE: Hiện tại logic yêu cầu IP phải duy nhất.
+    // Nếu nhiều máy in có thể dùng chung IP (ví dụ: network printer với port khác nhau, virtual printers),
+    // hãy comment out phần kiểm tra IP duplicate này hoặc chuyển sang cảnh báo (warning) thay vì lỗi (error).
+    if (ipAddress && ipAddress.trim().length > 0) {
+      const ipRequest = pool.request();
+      let ipQuery = 'SELECT PrinterID, IPAddress FROM Printers WHERE IPAddress = @ipAddress';
+      if (excludePrinterId) {
+        ipQuery += ' AND PrinterID != @excludePrinterId';
+        ipRequest.input('excludePrinterId', sql.UniqueIdentifier, excludePrinterId);
+      }
+      ipRequest.input('ipAddress', sql.NVarChar, ipAddress.trim());
+      
+      console.log('[Backend Service] checkDuplicatePrinter: Checking duplicate IP', ipQuery);
+      const ipResult = await ipRequest.query(ipQuery);
+      console.log('[Backend Service] checkDuplicatePrinter: IP check result', {
+        recordCount: ipResult.recordset.length,
+        records: ipResult.recordset
+      });
+      
+      if (ipResult.recordset.length > 0) {
+        const duplicateCount = ipResult.recordset.length;
+        const error: any = new Error(
+          `Địa chỉ IP "${ipAddress}" đã được sử dụng bởi ${duplicateCount} máy in khác trong hệ thống. Vui lòng sử dụng địa chỉ IP khác hoặc liên hệ quản trị viên nếu bạn muốn nhiều máy in dùng chung IP.`
+        );
+        error.code = 'DUPLICATE_IP';
+        error.duplicateCount = duplicateCount;
+        console.log('[Backend Service] checkDuplicatePrinter: Duplicate IP found', {
+          error,
+          duplicateCount,
+          ipAddress
+        });
+        throw error;
+      }
+    } else {
+      console.log('[Backend Service] checkDuplicatePrinter: No IP address provided, skipping IP check');
+    }
+    
+    console.log('[Backend Service] checkDuplicatePrinter: No duplicates found');
+  } catch (error: any) {
+    console.error('[Backend Service] checkDuplicatePrinter: Error occurred', {
+      error,
+      message: error?.message,
+      code: error?.code
+    });
+    throw error;
+  }
+}
+
+/**
  * Get list of printers with pagination and filters
  */
 export async function getPrinters(params: PrinterQueryParams = {}): Promise<PaginatedResponse<Printer>> {
@@ -152,43 +238,95 @@ export async function getPrinterById(printerId: string): Promise<Printer | null>
  * Create a new printer
  */
 export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
-  const pool = await getPool();
+  console.log('[Backend Service] createPrinter: Starting', data);
+  
+  try {
+    const pool = await getPool();
+    console.log('[Backend Service] createPrinter: Database pool obtained');
 
-  // Validate and normalize LocationID
-  // Convert empty strings, undefined, or whitespace-only strings to null
-  let locationIDValue: string | null = null;
-  if (data.LocationID) {
-    const trimmed = typeof data.LocationID === 'string' ? data.LocationID.trim() : '';
-    if (trimmed.length > 0) {
-      // Validate LocationID format (must be valid UUID)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(trimmed)) {
-        throw new Error('Invalid LocationID format. Must be a valid UUID.');
+    // Check for duplicate Name or IPAddress before creating
+    console.log('[Backend Service] createPrinter: Checking for duplicates', {
+      name: data.Name,
+      ipAddress: data.IPAddress
+    });
+    await checkDuplicatePrinter(data.Name, data.IPAddress);
+    console.log('[Backend Service] createPrinter: No duplicates found');
+
+    // Validate and normalize LocationID
+    // Convert empty strings, undefined, or whitespace-only strings to null
+    let locationIDValue: string | null = null;
+    if (data.LocationID) {
+      const trimmed = typeof data.LocationID === 'string' ? data.LocationID.trim() : '';
+      if (trimmed.length > 0) {
+        console.log('[Backend Service] createPrinter: Validating LocationID', trimmed);
+        // Validate LocationID format (must be valid UUID)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(trimmed)) {
+          throw new Error('Invalid LocationID format. Must be a valid UUID.');
+        }
+        await validateLocationID(trimmed);
+        locationIDValue = trimmed;
+        console.log('[Backend Service] createPrinter: LocationID validated', locationIDValue);
       }
-      await validateLocationID(trimmed);
-      locationIDValue = trimmed;
+    } else {
+      console.log('[Backend Service] createPrinter: No LocationID provided, using null');
     }
+
+    const request = pool.request();
+    request.input('name', sql.NVarChar, data.Name);
+    request.input('brand', sql.NVarChar, data.Brand || null);
+    request.input('model', sql.NVarChar, data.Model || null);
+    request.input('description', sql.NVarChar(sql.MAX), data.Description || null);
+    request.input('status', sql.NVarChar, data.Status || 'OFFLINE');
+    request.input('ipAddress', sql.NVarChar, data.IPAddress || null);
+    request.input('cupsPrinterName', sql.NVarChar, data.CUPSPrinterName || null);
+    request.input('isActive', sql.Bit, data.IsActive !== undefined ? data.IsActive : true);
+    request.input('locationID', sql.UniqueIdentifier, locationIDValue);
+
+    console.log('[Backend Service] createPrinter: Executing INSERT query', {
+      name: data.Name,
+      brand: data.Brand,
+      model: data.Model,
+      status: data.Status || 'OFFLINE',
+      ipAddress: data.IPAddress,
+      isActive: data.IsActive !== undefined ? data.IsActive : true,
+      locationID: locationIDValue
+    });
+
+    const result = await request
+      .query(`
+        INSERT INTO Printers (Name, Brand, Model, Description, Status, IPAddress, CUPSPrinterName, LocationID, IsActive)
+        OUTPUT INSERTED.*
+        VALUES (@name, @brand, @model, @description, @status, @ipAddress, @cupsPrinterName, @locationID, @isActive)
+      `);
+
+    console.log('[Backend Service] createPrinter: INSERT successful', {
+      rowsAffected: result.rowsAffected,
+      recordCount: result.recordset.length
+    });
+
+    if (result.recordset.length === 0) {
+      console.error('[Backend Service] createPrinter: No record returned from INSERT');
+      throw new Error('Failed to create printer - no record returned');
+    }
+
+    const printer = mapPrinterFromDb(result.recordset[0]);
+    console.log('[Backend Service] createPrinter: Printer mapped successfully', {
+      printerID: printer.PrinterID,
+      name: printer.Name
+    });
+
+    return printer;
+  } catch (error: any) {
+    console.error('[Backend Service] createPrinter: Error in service', {
+      error: error,
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      name: error?.name
+    });
+    throw error;
   }
-
-  const request = pool.request();
-  request.input('name', sql.NVarChar, data.Name);
-  request.input('brand', sql.NVarChar, data.Brand || null);
-  request.input('model', sql.NVarChar, data.Model || null);
-  request.input('description', sql.NVarChar(sql.MAX), data.Description || null);
-  request.input('status', sql.NVarChar, data.Status || 'OFFLINE');
-  request.input('ipAddress', sql.NVarChar, data.IPAddress || null);
-  request.input('cupsPrinterName', sql.NVarChar, data.CUPSPrinterName || null);
-  request.input('isActive', sql.Bit, data.IsActive !== undefined ? data.IsActive : true);
-  request.input('locationID', sql.UniqueIdentifier, locationIDValue);
-
-  const result = await request
-    .query(`
-      INSERT INTO Printers (Name, Brand, Model, Description, Status, IPAddress, CUPSPrinterName, LocationID, IsActive)
-      OUTPUT INSERTED.*
-      VALUES (@name, @brand, @model, @description, @status, @ipAddress, @cupsPrinterName, @locationID, @isActive)
-    `);
-
-  return mapPrinterFromDb(result.recordset[0]);
 }
 
 /**
@@ -196,6 +334,20 @@ export async function createPrinter(data: CreatePrinterDto): Promise<Printer> {
  */
 export async function updatePrinter(printerId: string, data: UpdatePrinterDto): Promise<Printer | null> {
   const pool = await getPool();
+
+  // Check for duplicate Name or IPAddress if they are being updated
+  if (data.Name !== undefined || data.IPAddress !== undefined) {
+    // Get current printer to use current values if not updating
+    const currentPrinter = await getPrinterById(printerId);
+    if (!currentPrinter) {
+      return null;
+    }
+    
+    const nameToCheck = data.Name !== undefined ? data.Name : currentPrinter.Name;
+    const ipToCheck = data.IPAddress !== undefined ? data.IPAddress : currentPrinter.IPAddress;
+    
+    await checkDuplicatePrinter(nameToCheck, ipToCheck, printerId);
+  }
 
   // Build dynamic update query
   const updateFields: string[] = [];
@@ -258,11 +410,29 @@ export async function updatePrinter(printerId: string, data: UpdatePrinterDto): 
   // UpdatedAt will be automatically updated by trigger
   updateFields.push('UpdatedAt = GETDATE()');
 
+  // Use table variable to avoid OUTPUT clause conflict with triggers
   const result = await request.query(`
+    DECLARE @UpdatedTable TABLE (
+      PrinterID UNIQUEIDENTIFIER,
+      Name NVARCHAR(255),
+      Brand NVARCHAR(100),
+      Model NVARCHAR(100),
+      Description NVARCHAR(MAX),
+      Status NVARCHAR(50),
+      IPAddress NVARCHAR(50),
+      CUPSPrinterName NVARCHAR(255),
+      LocationID UNIQUEIDENTIFIER,
+      IsActive BIT,
+      CreatedAt DATETIME2,
+      UpdatedAt DATETIME2
+    );
+
     UPDATE Printers
     SET ${updateFields.join(', ')}
-    OUTPUT INSERTED.*
-    WHERE PrinterID = @printerId
+    OUTPUT INSERTED.* INTO @UpdatedTable
+    WHERE PrinterID = @printerId;
+
+    SELECT * FROM @UpdatedTable;
   `);
 
   if (result.recordset.length === 0) {

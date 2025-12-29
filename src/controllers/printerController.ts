@@ -161,19 +161,67 @@ export async function getPrinterById(req: Request, res: Response): Promise<void>
  *         description: Lỗi server
  */
 export async function createPrinter(req: Request, res: Response): Promise<void> {
+  console.log('[Backend] createPrinter: Request received', {
+    body: req.body,
+    headers: req.headers,
+    method: req.method,
+    url: req.url
+  });
+  
   try {
     const data: CreatePrinterDto = req.body;
+    console.log('[Backend] createPrinter: Parsed data', data);
 
     // Validation
     if (!data.Name || data.Name.trim() === '') {
+      console.log('[Backend] createPrinter: Validation failed - Name is required');
       res.status(400).json({ error: 'Name is required' });
       return;
     }
 
+    console.log('[Backend] createPrinter: Calling printerService.createPrinter');
     const printer = await printerService.createPrinter(data);
-    res.status(201).json(printer);
+    console.log('[Backend] createPrinter: Printer created successfully', {
+      printerID: printer.PrinterID,
+      name: printer.Name
+    });
+    
+    res.status(201).json({
+      success: true,
+      data: printer,
+      message: 'Printer created successfully'
+    });
+    console.log('[Backend] createPrinter: Response sent with status 201');
   } catch (error: any) {
-    console.error('[printerController] Error creating printer:', error);
+    console.error('[Backend] createPrinter: Error occurred', {
+      error: error,
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      name: error?.name
+    });
+    
+    // Check for duplicate Name or IPAddress
+    if (error?.code === 'DUPLICATE_NAME' || error?.code === 'DUPLICATE_IP') {
+      console.log('[Backend] createPrinter: Duplicate detected, returning 409 Conflict', {
+        code: error.code,
+        message: error.message
+      });
+      
+      // Check if response has already been sent
+      if (res.headersSent) {
+        console.error('[Backend] createPrinter: Response already sent, cannot send 409');
+        return;
+      }
+      
+      res.status(409).json({
+        error: 'Conflict',
+        message: error.message || 'A printer with this name or IP address already exists',
+        code: error.code,
+      });
+      console.log('[Backend] createPrinter: 409 Conflict response sent');
+      return;
+    }
     
     // Check if it's a validation error (LocationID not found)
     const errorMessage = error?.message || error?.originalError?.message || '';
@@ -262,9 +310,23 @@ export async function updatePrinter(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    res.status(200).json(printer);
+    res.status(200).json({
+      success: true,
+      data: printer,
+      message: 'Printer updated successfully'
+    });
   } catch (error: any) {
     console.error('[printerController] Error updating printer:', error);
+    
+    // Check for duplicate Name or IPAddress
+    if (error?.code === 'DUPLICATE_NAME' || error?.code === 'DUPLICATE_IP') {
+      res.status(409).json({
+        error: 'Conflict',
+        message: error.message || 'A printer with this name or IP address already exists',
+        code: error.code,
+      });
+      return;
+    }
     
     // Check if it's a validation error (LocationID not found)
     const errorMessage = error?.message || error?.originalError?.message || '';
@@ -344,11 +406,19 @@ export async function deletePrinter(req: Request, res: Response): Promise<void> 
     const deleted = await printerService.deletePrinter(id);
 
     if (!deleted) {
-      res.status(404).json({ error: 'Printer not found' });
+      res.status(404).json({ 
+        success: false,
+        error: 'Printer not found',
+        message: 'Printer not found'
+      });
       return;
     }
 
-    res.status(200).json({ message: 'Printer deleted successfully' });
+    res.status(200).json({ 
+      success: true,
+      message: 'Printer deleted successfully',
+      data: { message: 'Printer deleted successfully' }
+    });
   } catch (error) {
     console.error('[printerController] Error deleting printer:', error);
     res.status(500).json({
