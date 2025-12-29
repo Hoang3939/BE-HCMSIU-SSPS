@@ -172,22 +172,23 @@ jobs:
           # Đảm bảo npm cache sạch sẽ
           npm cache clean --force || true
           
-          # Kiểm tra package-lock.json
+          # Kiểm tra package-lock.json và sync với package.json
           if [ -f "package-lock.json" ]; then
-            echo "Tìm thấy package-lock.json, sử dụng npm ci..."
-            npm ci --production=false --legacy-peer-deps
+            echo "Tìm thấy package-lock.json, thử npm ci..."
+            # Thử npm ci trước, nếu fail thì dùng npm install để sync lock file
+            if ! npm ci --production=false --legacy-peer-deps 2>&1 | tee /tmp/npm-ci.log; then
+              echo "⚠️  npm ci failed, package-lock.json không sync với package.json"
+              echo "Cập nhật package-lock.json bằng npm install..."
+              npm install --production=false --legacy-peer-deps
+            else
+              echo "✅ npm ci thành công"
+            fi
           else
             echo "Không tìm thấy package-lock.json, sử dụng npm install..."
             npm install --production=false --legacy-peer-deps
           fi
           
-          # Kiểm tra và cài đặt iconv-lite nếu thiếu (dependency quan trọng của body-parser)
-          if [ ! -d "node_modules/iconv-lite" ]; then
-            echo "⚠️  iconv-lite chưa được cài đặt, cài đặt thủ công..."
-            npm install iconv-lite --save --legacy-peer-deps
-          fi
-          
-          # Kiểm tra các dependencies quan trọng khác
+          # Kiểm tra các dependencies quan trọng
           echo "Kiểm tra các dependencies quan trọng..."
           required_deps=("express" "body-parser" "iconv-lite" "raw-body")
           missing_deps=()
