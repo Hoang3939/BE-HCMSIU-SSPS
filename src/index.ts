@@ -40,10 +40,13 @@ const corsOptions = {
 
     const allowedOrigins: string[] = [];
 
-    // Always allow localhost for development
+    // Hardcode production and development origins
+    allowedOrigins.push('https://ssps.acdm.site');
+    allowedOrigins.push('https://api.acdm.site');
     allowedOrigins.push('http://localhost:3000');
+    allowedOrigins.push('http://localhost:3001');
 
-    // Add custom frontend URL if provided
+    // Add custom frontend URL from environment if provided (for flexibility)
     const frontendUrl = process.env.FRONTEND_URL;
     if (frontendUrl) {
       const urls = frontendUrl.includes(',')
@@ -68,13 +71,19 @@ const corsOptions = {
       });
     }
 
+    // Log allowed origins on startup (only once)
+    if (!(global as any).corsOriginsLogged) {
+      console.log(`[cors]: CORS configured - allowing origins:`, allowedOrigins.join(', '));
+      (global as any).corsOriginsLogged = true;
+    }
+
     // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
     // Reject other origins
-    console.warn(`[CORS] Blocked origin: ${origin}`);
+    console.warn(`[CORS] Blocked origin: ${origin}. Allowed origins:`, allowedOrigins.join(', '));
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
