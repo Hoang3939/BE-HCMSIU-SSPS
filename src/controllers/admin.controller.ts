@@ -43,13 +43,20 @@ import * as adminService from '../services/admin.service.js';
  */
 export async function getDashboardStats(req: Request, res: Response): Promise<void> {
   try {
+    console.log('[adminController] getDashboardStats called');
     const stats = await adminService.getDashboardStats();
+    console.log('[adminController] getDashboardStats success:', {
+      totalPrinters: stats.totalPrinters,
+      activePrinters: stats.activePrinters,
+      totalStudents: stats.totalStudents,
+    });
     res.status(200).json({
       success: true,
       data: stats,
     });
   } catch (error) {
     console.error('[adminController] Error getting dashboard stats:', error);
+    console.error('[adminController] Error stack:', error instanceof Error ? error.stack : undefined);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -81,6 +88,8 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
  */
 export async function getRecentActivities(req: Request, res: Response): Promise<void> {
   try {
+    console.log('[adminController] getRecentActivities called, limit:', req.query.limit);
+    
     // Parse and validate limit parameter
     let limit = 10;
     if (req.query.limit) {
@@ -90,7 +99,9 @@ export async function getRecentActivities(req: Request, res: Response): Promise<
       }
     }
 
+    console.log('[adminController] Calling adminService.getRecentActivities with limit:', limit);
     const activities = await adminService.getRecentActivities(limit);
+    console.log('[adminController] getRecentActivities success, count:', activities.length);
     
     // Convert Date objects to ISO strings for JSON serialization
     const serializedActivities = activities.map(activity => ({

@@ -31,9 +31,12 @@ export interface RecentActivity {
  * Lấy thống kê tổng quan cho Dashboard
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
+  console.log('[adminService] getDashboardStats called');
   const pool = await getPool();
+  console.log('[adminService] Database pool obtained:', !!pool);
 
   try {
+    console.log('[adminService] Querying printer stats...');
     // Lấy tổng số máy in và số máy đang hoạt động
     const printerStatsResult = await pool.request().query(`
       SELECT 
@@ -69,13 +72,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         AND CAST(StartTime AS DATE) = CAST(GETDATE() AS DATE)
     `);
 
+    console.log('[adminService] All queries completed successfully');
     const printerStats = printerStatsResult.recordset[0];
     const students = studentsResult.recordset[0];
     const totalPrintJobs = totalPrintJobsResult.recordset[0];
     const todayPrintJobs = todayPrintJobsResult.recordset[0];
     const failedPrintJobs = failedPrintJobsResult.recordset[0];
 
-    return {
+    const stats = {
       totalPrinters: printerStats.totalPrinters || 0,
       activePrinters: printerStats.activePrinters || 0,
       totalStudents: students.totalStudents || 0,
@@ -83,8 +87,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       printJobsToday: todayPrintJobs.printJobsToday || 0,
       failedPrintJobs: failedPrintJobs.failedPrintJobs || 0,
     };
+    
+    console.log('[adminService] getDashboardStats success:', stats);
+    return stats;
   } catch (error) {
     console.error('[adminService] Error getting dashboard stats:', error);
+    console.error('[adminService] Error stack:', error instanceof Error ? error.stack : undefined);
     throw error;
   }
 }
@@ -93,16 +101,21 @@ export async function getDashboardStats(): Promise<DashboardStats> {
  * Lấy các hoạt động in ấn gần đây
  */
 export async function getRecentActivities(limit: number = 10): Promise<RecentActivity[]> {
+  console.log('[adminService] getRecentActivities called with limit:', limit);
   const pool = await getPool();
+  console.log('[adminService] Database pool obtained:', !!pool);
 
   if (!pool) {
+    console.error('[adminService] ❌ Database connection not available');
     throw new Error('Database connection not available');
   }
 
   try {
     // Validate limit
     const validLimit = Math.max(1, Math.min(limit || 10, 100)); // Between 1 and 100
+    console.log('[adminService] Validated limit:', validLimit);
 
+    console.log('[adminService] Executing query for recent activities...');
     const result = await pool
       .request()
       .input('limit', sql.Int, validLimit)
@@ -125,10 +138,14 @@ export async function getRecentActivities(limit: number = 10): Promise<RecentAct
         ORDER BY pj.StartTime DESC
       `);
 
+    console.log('[adminService] Query completed, recordset length:', result.recordset?.length || 0);
+    
     if (!result.recordset || result.recordset.length === 0) {
+      console.log('[adminService] No activities found, returning empty array');
       return [];
     }
 
+    console.log('[adminService] Processing activities...');
     const activities: RecentActivity[] = result.recordset.map((row: any) => {
       // Safely parse createdAt (from StartTime)
       let createdAt: Date;
@@ -177,6 +194,7 @@ export async function getRecentActivities(limit: number = 10): Promise<RecentAct
       };
     });
 
+    console.log('[adminService] getRecentActivities success, returning', activities.length, 'activities');
     return activities;
   } catch (error) {
     console.error('[adminService] Error getting recent activities:', error);

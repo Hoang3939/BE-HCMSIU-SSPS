@@ -27,9 +27,17 @@ export const authRequired = (
   next: NextFunction
 ): void => {
   try {
+    // Log cho admin endpoints để debug
+    if (req.path.startsWith('/api/admin')) {
+      console.log('[auth-middleware] Checking authentication for:', req.path);
+    }
+    
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
+      if (req.path.startsWith('/api/admin')) {
+        console.log('[auth-middleware] ❌ Authorization header is missing');
+      }
       res.status(401).json({
         success: false,
         message: 'Authorization header is missing',
@@ -40,6 +48,9 @@ export const authRequired = (
     // Kiểm tra format "Bearer <token>"
     const parts = authHeader.split(' ');
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      if (req.path.startsWith('/api/admin')) {
+        console.log('[auth-middleware] ❌ Invalid authorization format');
+      }
       res.status(401).json({
         success: false,
         message: 'Invalid authorization format. Expected: Bearer <token>',
@@ -50,6 +61,9 @@ export const authRequired = (
     const token = parts[1] as string;
 
     if (!token || token.trim().length === 0) {
+      if (req.path.startsWith('/api/admin')) {
+        console.log('[auth-middleware] ❌ Token is missing');
+      }
       res.status(401).json({
         success: false,
         message: 'Token is missing',
@@ -66,6 +80,14 @@ export const authRequired = (
         userID: String(decoded.userID),
         role: String(decoded.role),
       };
+
+      if (req.path.startsWith('/api/admin')) {
+        console.log('[auth-middleware] ✅ Token verified:', {
+          userID: req.auth.userID,
+          role: req.auth.role,
+          path: req.path,
+        });
+      }
 
       next();
     } catch (error) {
@@ -114,6 +136,9 @@ export const authRequired = (
 export const requireRole = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.auth) {
+      if (req.path.startsWith('/api/admin')) {
+        console.log('[requireRole] ❌ Authentication required');
+      }
       res.status(401).json({
         success: false,
         message: 'Authentication required',
@@ -122,11 +147,26 @@ export const requireRole = (...roles: string[]) => {
     }
 
     if (!roles.includes(req.auth.role)) {
+      if (req.path.startsWith('/api/admin')) {
+        console.log('[requireRole] ❌ Access denied:', {
+          userRole: req.auth.role,
+          requiredRoles: roles,
+          path: req.path,
+        });
+      }
       res.status(403).json({
         success: false,
         message: `Access denied. Required role(s): ${roles.join(', ')}`,
       });
       return;
+    }
+
+    if (req.path.startsWith('/api/admin')) {
+      console.log('[requireRole] ✅ Role check passed:', {
+        userRole: req.auth.role,
+        requiredRoles: roles,
+        path: req.path,
+      });
     }
 
     next();
