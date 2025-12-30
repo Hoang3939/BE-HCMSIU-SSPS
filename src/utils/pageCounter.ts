@@ -23,16 +23,50 @@ export async function convertToPdfWithLibreOffice(filePath: string): Promise<str
         'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
         'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
       ]
-      : ['soffice', '/usr/bin/soffice'];
+      : [
+        'soffice', // Try PATH first
+        '/usr/bin/soffice',
+        '/usr/local/bin/soffice',
+      ];
 
-    // Check if LibreOffice exists by checking file system instead of running command
+    // Check if LibreOffice exists
     let libreOfficeCmd = null;
     const fsSync = await import('fs');
-    for (const cmd of libreOfficePaths) {
-      if (fsSync.existsSync(cmd)) {
-        libreOfficeCmd = cmd;
-        console.log(`[pageCounter] Found LibreOffice at: ${cmd}`);
-        break;
+    
+    // First, try to find via 'which' command (more reliable on Linux)
+    if (!isWindows) {
+      try {
+        const { execSync } = await import('child_process');
+        const whichResult = execSync('which soffice 2>/dev/null', { encoding: 'utf8' }).trim();
+        if (whichResult && fsSync.existsSync(whichResult)) {
+          libreOfficeCmd = whichResult;
+          console.log(`[pageCounter] Found LibreOffice via 'which' command: ${libreOfficeCmd}`);
+        }
+      } catch (e) {
+        // 'which' command failed, continue with path checking
+      }
+    }
+    
+    // If not found via 'which', check common paths
+    if (!libreOfficeCmd) {
+      for (const cmd of libreOfficePaths) {
+        // Try direct path or command in PATH
+        if (cmd === 'soffice' && !isWindows) {
+          // Try running soffice --version to check if it's in PATH
+          try {
+            const { execSync } = await import('child_process');
+            execSync('soffice --version', { stdio: 'ignore' });
+            libreOfficeCmd = 'soffice';
+            console.log(`[pageCounter] Found LibreOffice in PATH: ${libreOfficeCmd}`);
+            break;
+          } catch (e) {
+            // Not in PATH, continue
+          }
+        } else if (fsSync.existsSync(cmd)) {
+          libreOfficeCmd = cmd;
+          console.log(`[pageCounter] Found LibreOffice at: ${cmd}`);
+          break;
+        }
       }
     }
 
