@@ -20,13 +20,15 @@ export class PaymentController {
    */
   static createPayment = asyncHandler(async (req: Request, res: Response) => {
     const { amount, pageQuantity } = req.body as CreatePaymentRequest;
-    const studentIdHeader = req.header('x-student-id');
-
-    if (!studentIdHeader) {
-      throw new BadRequestError('Thiếu header x-student-id');
+    
+    // Get studentId from auth (JWT token) instead of header
+    // This ensures consistency with history queries
+    if (!req.auth || !req.auth.userID) {
+      throw new BadRequestError('Unauthorized - please login again');
     }
 
-    const studentId = validateUUID(studentIdHeader, 'x-student-id');
+    const studentId = req.auth.userID;
+    console.log('[PaymentController] Creating payment for userID:', studentId);
 
     if (!amount || !pageQuantity) {
       throw new BadRequestError('Amount và pageQuantity là bắt buộc');

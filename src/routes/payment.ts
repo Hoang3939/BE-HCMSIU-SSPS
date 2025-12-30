@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller.js';
 import { verifySePayWebhook } from '../middleware/sepayAuth.middleware.js';
+import { authRequired } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -22,14 +23,8 @@ const router = Router();
  *   post:
  *     summary: Tạo giao dịch thanh toán và QR code
  *     tags: [Payment]
- *     parameters:
- *       - in: header
- *         name: x-student-id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: StudentID (GUID) của sinh viên
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -72,7 +67,7 @@ const router = Router();
  *       400:
  *         description: Dữ liệu không hợp lệ hoặc thiếu header x-student-id
  */
-router.post('/create', PaymentController.createPayment);
+router.post('/create', authRequired, PaymentController.createPayment);
 
 /**
  * @swagger
