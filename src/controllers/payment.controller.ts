@@ -89,5 +89,24 @@ export class PaymentController {
       data: result,
     });
   });
+
+  /**
+   * Lấy chi tiết giao dịch (để debug)
+   * GET /api/payment/details/:transId
+   */
+  static getDetails = asyncHandler(async (req: Request, res: Response) => {
+    const { transId } = req.params;
+
+    if (!transId) {
+      throw new BadRequestError('Transaction ID là bắt buộc');
+    }
+
+    const result = await PaymentService.getDetails(transId);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  });
 }
 

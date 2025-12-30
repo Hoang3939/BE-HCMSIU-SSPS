@@ -121,9 +121,14 @@ export class PaymentService {
    * @returns Success status
    */
   static async handleWebhook(payload: SePayWebhookPayload): Promise<{ success: boolean }> {
+    console.log('[PaymentService] ========================================');
+    console.log('[PaymentService] Webhook received at:', new Date().toISOString());
+    console.log('[PaymentService] Full webhook payload:', JSON.stringify(payload, null, 2));
+    console.log('[PaymentService] ========================================');
+    
     // Only process incoming transfers
     if (payload.transferType !== 'in') {
-      console.log('[PaymentService] Ignoring outgoing transfer');
+      console.log('[PaymentService] Ignoring outgoing transfer (transferType:', payload.transferType, ')');
       return { success: true };
     }
 
@@ -135,10 +140,11 @@ export class PaymentService {
     const uuidWithHyphensRegex = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;
     const uuidWithoutHyphensRegex = /[a-f0-9]{32}/i;
     
-    console.log('[PaymentService] Webhook payload:', {
+    console.log('[PaymentService] Extracting TransID from:', {
       content: payload.content,
       description: payload.description,
       transferAmount: payload.transferAmount,
+      transferType: payload.transferType,
     });
     
     // Try to find UUID in content first, then description
@@ -150,9 +156,10 @@ export class PaymentService {
       payload.description?.match(uuidWithoutHyphensRegex);
     
     if (!transIdMatch) {
-      console.log('[PaymentService] No TransID found in webhook payload');
-      console.log('[PaymentService] Content:', payload.content);
-      console.log('[PaymentService] Description:', payload.description);
+      console.error('[PaymentService] ❌ No TransID found in webhook payload!');
+      console.error('[PaymentService] Content:', payload.content);
+      console.error('[PaymentService] Description:', payload.description);
+      console.error('[PaymentService] Full payload:', JSON.stringify(payload, null, 2));
       return { success: true }; // Return success to prevent SePay from retrying
     }
 
@@ -165,7 +172,7 @@ export class PaymentService {
       console.log('[PaymentService] Normalized TransID (added hyphens):', transId);
     }
     
-    console.log('[PaymentService] Extracted TransID:', transId);
+    console.log('[PaymentService] ✅ Extracted TransID:', transId);
 
     const pool = await getPool();
     if (!pool) {
@@ -188,23 +195,31 @@ export class PaymentService {
         `);
 
       if (transResult.recordset.length === 0) {
-        console.log(`[PaymentService] Transaction not found: ${transId}`);
+        console.error(`[PaymentService] ❌ Transaction not found: ${transId}`);
+        console.error('[PaymentService] This might be a payment for a different transaction or invalid TransID');
         await transaction.rollback();
         return { success: true }; // Return success to prevent retry
       }
 
       const trans = transResult.recordset[0];
+      console.log('[PaymentService] Found transaction:', {
+        transId: trans.TransID,
+        studentId: trans.StudentID,
+        amount: trans.Amount,
+        pagesAdded: trans.PagesAdded,
+        status: trans.Status,
+      });
 
       // Check if already completed (Idempotency)
       if (trans.Status === 'COMPLETED') {
-        console.log(`[PaymentService] Transaction already completed: ${transId}`);
+        console.log(`[PaymentService] ✅ Transaction already completed: ${transId} (idempotency check)`);
         await transaction.rollback();
         return { success: true };
       }
 
       // Check if status is PENDING
       if (trans.Status !== 'PENDING') {
-        console.log(`[PaymentService] Transaction status is not PENDING: ${trans.Status}`);
+        console.warn(`[PaymentService] ⚠️ Transaction status is not PENDING: ${trans.Status} (expected PENDING)`);
         await transaction.rollback();
         return { success: true };
       }
@@ -213,9 +228,15 @@ export class PaymentService {
       const requiredAmount = parseFloat(trans.Amount);
       const receivedAmount = payload.transferAmount;
 
+      console.log('[PaymentService] Validating amount:', {
+        required: requiredAmount,
+        received: receivedAmount,
+        isValid: receivedAmount >= requiredAmount,
+      });
+
       if (receivedAmount < requiredAmount) {
         console.warn(
-          `[PaymentService] Insufficient payment: Required ${requiredAmount}, Received ${receivedAmount}`,
+          `[PaymentService] ⚠️ Insufficient payment: Required ${requiredAmount}, Received ${receivedAmount}`,
         );
         await transaction.rollback();
         return { success: true }; // Return success but don't process
@@ -250,9 +271,14 @@ export class PaymentService {
 
       await transaction.commit();
 
-      console.log(
-        `[PaymentService] Payment completed: TransID=${transId}, Pages=${trans.PagesAdded}`,
-      );
+      console.log('[PaymentService] ========================================');
+      console.log(`[PaymentService] ✅ Payment completed successfully!`);
+      console.log(`[PaymentService] TransID: ${transId}`);
+      console.log(`[PaymentService] Pages added: ${trans.PagesAdded}`);
+      console.log(`[PaymentService] StudentID: ${trans.StudentID}`);
+      console.log(`[PaymentService] Amount: ${requiredAmount} VNĐ`);
+      console.log(`[PaymentService] Received: ${receivedAmount} VNĐ`);
+      console.log('[PaymentService] ========================================');
 
       return { success: true };
     } catch (error) {
@@ -303,6 +329,55 @@ export class PaymentService {
     return {
       status: status as 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED',
       pages: trans.PagesAdded || 0,
+    };
+  }
+
+  /**
+   * Lấy chi tiết giao dịch (để debug)
+   * @param transId - Transaction ID
+   * @returns Chi tiết đầy đủ của giao dịch
+   */
+  static async getDetails(transId: string): Promise<any> {
+    const pool = await getPool();
+    if (!pool) {
+      throw new InternalServerError('Database connection not available');
+    }
+
+    console.log('[PaymentService] Getting details for TransID:', transId);
+
+    const result = await pool
+      .request()
+      .input('transId', sql.UniqueIdentifier, transId)
+      .query(`
+        SELECT 
+          TransID,
+          StudentID,
+          Date,
+          Amount,
+          PagesAdded,
+          Status,
+          PaymentMethod,
+          PaymentRef
+        FROM Transactions
+        WHERE TransID = @transId
+      `);
+
+    if (result.recordset.length === 0) {
+      console.log('[PaymentService] Transaction not found:', transId);
+      throw new NotFoundError('Không tìm thấy giao dịch');
+    }
+
+    const trans = result.recordset[0];
+    
+    return {
+      transId: trans.TransID,
+      studentId: trans.StudentID,
+      date: trans.Date,
+      amount: parseFloat(trans.Amount),
+      pagesAdded: trans.PagesAdded,
+      status: trans.Status,
+      paymentMethod: trans.PaymentMethod,
+      paymentRef: trans.PaymentRef,
     };
   }
 }

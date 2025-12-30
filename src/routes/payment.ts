@@ -172,5 +172,27 @@ router.post('/sepay-webhook', verifySePayWebhook, PaymentController.handleWebhoo
  */
 router.get('/status/:transId', PaymentController.getStatus);
 
+/**
+ * @swagger
+ * /api/payment/details/{transId}:
+ *   get:
+ *     summary: Lấy chi tiết giao dịch (để debug)
+ *     tags: [Payment]
+ *     parameters:
+ *       - in: path
+ *         name: transId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Transaction ID
+ *     responses:
+ *       200:
+ *         description: Chi tiết giao dịch
+ *       404:
+ *         description: Không tìm thấy giao dịch
+ */
+router.get('/details/:transId', PaymentController.getDetails);
+
 export default router;
 
