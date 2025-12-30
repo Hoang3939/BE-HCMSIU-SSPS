@@ -33,30 +33,45 @@ export class HistoryService {
       console.log('[HistoryService] Normalized studentId:', normalizedStudentId);
       
       // First, verify the student exists in Students table
+      // If not, try to find StudentID from Users table (for users who might not have Students record yet)
       const studentCheck = await pool
         .request()
-        .input('studentId', sql.UniqueIdentifier, normalizedStudentId)
-        .query('SELECT StudentID FROM Students WHERE StudentID = @studentId');
+        .input('userId', sql.UniqueIdentifier, normalizedStudentId)
+        .query(`
+          SELECT s.StudentID 
+          FROM Students s
+          WHERE s.StudentID = @userId
+          UNION
+          SELECT u.UserID as StudentID
+          FROM Users u
+          LEFT JOIN Students s ON u.UserID = s.StudentID
+          WHERE u.UserID = @userId AND u.Role = 'STUDENT' AND s.StudentID IS NULL
+        `);
       
-      console.log('[HistoryService] Student check result:', {
-        found: studentCheck.recordset.length > 0,
-        studentId: normalizedStudentId,
-      });
+      let actualStudentId = normalizedStudentId;
+      if (studentCheck.recordset.length > 0) {
+        actualStudentId = studentCheck.recordset[0].StudentID;
+        console.log('[HistoryService] Student found, using StudentID:', actualStudentId);
+      } else {
+        console.warn('[HistoryService] Student not found in Students table, using userID as StudentID:', normalizedStudentId);
+        // Still use userID - it might work if StudentID = UserID
+        actualStudentId = normalizedStudentId;
+      }
       
       // Also check if there are any transactions with this StudentID (for debugging)
       const transactionCheck = await pool
         .request()
-        .input('studentId', sql.UniqueIdentifier, normalizedStudentId)
+        .input('studentId', sql.UniqueIdentifier, actualStudentId)
         .query('SELECT COUNT(*) as count FROM Transactions WHERE StudentID = @studentId');
       
       console.log('[HistoryService] Transaction count check:', {
         count: transactionCheck.recordset[0]?.count || 0,
-        studentId: normalizedStudentId,
+        studentId: actualStudentId,
       });
       
       const result = await pool
         .request()
-        .input('studentId', sql.UniqueIdentifier, normalizedStudentId)
+        .input('studentId', sql.UniqueIdentifier, actualStudentId)
         .query(`
           SELECT 
             TransID,
