@@ -28,9 +28,35 @@ export class HistoryService {
         throw new InternalServerError('Database connection not available');
       }
       
+      // Normalize studentId to uppercase (SQL Server GUIDs are case-insensitive but we want consistency)
+      const normalizedStudentId = studentId.toUpperCase();
+      console.log('[HistoryService] Normalized studentId:', normalizedStudentId);
+      
+      // First, verify the student exists in Students table
+      const studentCheck = await pool
+        .request()
+        .input('studentId', sql.UniqueIdentifier, normalizedStudentId)
+        .query('SELECT StudentID FROM Students WHERE StudentID = @studentId');
+      
+      console.log('[HistoryService] Student check result:', {
+        found: studentCheck.recordset.length > 0,
+        studentId: normalizedStudentId,
+      });
+      
+      // Also check if there are any transactions with this StudentID (for debugging)
+      const transactionCheck = await pool
+        .request()
+        .input('studentId', sql.UniqueIdentifier, normalizedStudentId)
+        .query('SELECT COUNT(*) as count FROM Transactions WHERE StudentID = @studentId');
+      
+      console.log('[HistoryService] Transaction count check:', {
+        count: transactionCheck.recordset[0]?.count || 0,
+        studentId: normalizedStudentId,
+      });
+      
       const result = await pool
         .request()
-        .input('studentId', sql.UniqueIdentifier, studentId)
+        .input('studentId', sql.UniqueIdentifier, normalizedStudentId)
         .query(`
           SELECT 
             TransID,
@@ -51,7 +77,21 @@ export class HistoryService {
           transID: result.recordset[0].TransID,
           status: result.recordset[0].Status,
           date: result.recordset[0].Date,
+          studentID: normalizedStudentId,
         });
+      } else {
+        console.warn('[HistoryService] No transactions found for studentId:', normalizedStudentId);
+        // Try to find any transactions to see what StudentIDs exist
+        const allTransactions = await pool
+          .request()
+          .query('SELECT TOP 5 StudentID, TransID, Status FROM Transactions ORDER BY Date DESC');
+        console.log('[HistoryService] Sample StudentIDs from Transactions table:', 
+          allTransactions.recordset.map((r: any) => ({
+            studentID: r.StudentID,
+            transID: r.TransID,
+            status: r.Status,
+          }))
+        );
       }
 
       return result.recordset.map((row) => ({
