@@ -8,7 +8,8 @@ import sql from 'mssql';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { countDocumentPages, convertToPdfWithLibreOffice } from '../utils/pageCounter.js';
+import { countDocumentPages } from '../utils/pageCounter.js';
+import { convertToPdfWithFallback } from '../utils/convertApi.js';
 import { MAX_FILE_SIZE } from '../utils/fileUpload.js';
 import {
   BadRequestError,
@@ -296,11 +297,11 @@ export class DocumentService {
       };
     }
 
-    // For other formats, convert to PDF
+    // For other formats, convert to PDF using ConvertAPI (preferred) or LibreOffice (fallback)
     try {
-      const convertedPdfPath = await convertToPdfWithLibreOffice(filePath);
+      const convertedPdfPath = await convertToPdfWithFallback(filePath, mimeType);
       if (!convertedPdfPath || !fs.existsSync(convertedPdfPath)) {
-        throw new InternalServerError('LibreOffice không tạo được file PDF sau khi convert');
+        throw new InternalServerError('Không thể tạo file PDF sau khi convert. Vui lòng kiểm tra cấu hình ConvertAPI hoặc cài đặt LibreOffice.');
       }
 
       return {
@@ -310,9 +311,13 @@ export class DocumentService {
       };
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes('LibreOffice không được cài đặt')) {
+        if (error.message.includes('LibreOffice không được cài đặt') || error.message.includes('chưa được cài đặt')) {
           throw new InternalServerError(
-            'LibreOffice chưa được cài đặt. Vui lòng cài LibreOffice để xem preview file Word/PPT.'
+            'LibreOffice chưa được cài đặt và ConvertAPI chưa được cấu hình. Vui lòng cài LibreOffice hoặc cấu hình CONVERT_API_KEY trong environment variables để xem preview file Word/PPT.'
+          );
+        } else if (error.message.includes('ConvertAPI')) {
+          throw new InternalServerError(
+            'ConvertAPI không thể convert file này. Vui lòng kiểm tra cấu hình CONVERT_API_KEY hoặc thử lại sau.'
           );
         } else if (error.message.includes('timeout')) {
           throw new InternalServerError(
@@ -320,11 +325,11 @@ export class DocumentService {
           );
         } else if (error.message.includes('exit code 1') || error.message.includes('exit code')) {
           throw new InternalServerError(
-            'LibreOffice không thể convert file này. Có thể file Word bị lỗi, bị mã hóa, hoặc có vấn đề về định dạng. Vui lòng thử file khác hoặc kiểm tra file có mở được trong Word không.'
+            'Không thể convert file này. Có thể file Word bị lỗi, bị mã hóa, hoặc có vấn đề về định dạng. Vui lòng thử file khác hoặc kiểm tra file có mở được trong Word không.'
           );
         } else if (error.message.includes('Không tìm thấy file PDF')) {
           throw new InternalServerError(
-            'LibreOffice không tạo được file PDF sau khi convert. Vui lòng kiểm tra file có hợp lệ không.'
+            'Không tạo được file PDF sau khi convert. Vui lòng kiểm tra file có hợp lệ không.'
           );
         }
       }

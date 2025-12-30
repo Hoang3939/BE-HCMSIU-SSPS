@@ -4,6 +4,7 @@ import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { convertToPdfWithConvertAPI } from './convertApi.js';
 
 const execAsync = promisify(exec);
 
@@ -245,13 +246,33 @@ export async function countDocumentPages(
     mimeType.includes('wordprocessingml') ||
     mimeType.includes('msword')
   ) {
-    // Word documents: Convert to PDF using LibreOffice for accurate page count (REQUIRED)
+    // Word documents: Convert to PDF using ConvertAPI (preferred) or LibreOffice (fallback)
     try {
-      console.log(`[pageCounter] Converting Word document to PDF using LibreOffice: ${filePath}`);
-      const convertedPdfPath = await convertToPdfWithLibreOffice(filePath);
+      const fileExt = path.extname(filePath).toLowerCase();
+      const fileType = fileExt === '.docx' ? 'docx' : fileExt === '.doc' ? 'doc' : 'docx';
+      
+      // Try ConvertAPI first
+      console.log(`[pageCounter] Converting Word document to PDF: ${filePath}`);
+      let convertedPdfPath: string | null = null;
+      
+      try {
+        convertedPdfPath = await convertToPdfWithConvertAPI(filePath, fileType);
+      } catch (convertApiError) {
+        console.warn('[pageCounter] ConvertAPI failed, trying LibreOffice:', convertApiError);
+      }
+      
+      // Fallback to LibreOffice if ConvertAPI failed
+      if (!convertedPdfPath) {
+        console.log(`[pageCounter] Using LibreOffice fallback for Word document: ${filePath}`);
+        convertedPdfPath = await convertToPdfWithLibreOffice(filePath);
+      }
 
       if (!convertedPdfPath) {
-        throw new Error('Không thể chuyển đổi file Word sang PDF. LibreOffice không tạo được file PDF.');
+        // Fallback: Estimate pages based on file size
+        // Average Word document: ~30KB per page
+        const estimated = Math.max(1, Math.ceil(fileSize / (30 * 1024)));
+        console.warn(`[pageCounter] Cannot convert Word to PDF, using estimation: ${estimated} pages`);
+        return estimated;
       }
 
       // Count pages from converted PDF using pdf-parse (version 1.1.1)
@@ -283,13 +304,33 @@ export async function countDocumentPages(
     mimeType.includes('presentationml') ||
     mimeType.includes('mspowerpoint')
   ) {
-    // PowerPoint: Convert to PDF using LibreOffice for accurate slide count (REQUIRED)
+    // PowerPoint: Convert to PDF using ConvertAPI (preferred) or LibreOffice (fallback)
     try {
-      console.log(`[pageCounter] Converting PowerPoint to PDF using LibreOffice: ${filePath}`);
-      const convertedPdfPath = await convertToPdfWithLibreOffice(filePath);
+      const fileExt = path.extname(filePath).toLowerCase();
+      const fileType = fileExt === '.pptx' ? 'pptx' : fileExt === '.ppt' ? 'ppt' : 'pptx';
+      
+      // Try ConvertAPI first
+      console.log(`[pageCounter] Converting PowerPoint to PDF: ${filePath}`);
+      let convertedPdfPath: string | null = null;
+      
+      try {
+        convertedPdfPath = await convertToPdfWithConvertAPI(filePath, fileType);
+      } catch (convertApiError) {
+        console.warn('[pageCounter] ConvertAPI failed, trying LibreOffice:', convertApiError);
+      }
+      
+      // Fallback to LibreOffice if ConvertAPI failed
+      if (!convertedPdfPath) {
+        console.log(`[pageCounter] Using LibreOffice fallback for PowerPoint: ${filePath}`);
+        convertedPdfPath = await convertToPdfWithLibreOffice(filePath);
+      }
 
       if (!convertedPdfPath) {
-        throw new Error('Không thể chuyển đổi file PowerPoint sang PDF. LibreOffice không tạo được file PDF.');
+        // Fallback: Estimate slides based on file size
+        // Average PowerPoint slide: ~100KB per slide
+        const estimated = Math.max(1, Math.ceil(fileSize / (100 * 1024)));
+        console.warn(`[pageCounter] Cannot convert PowerPoint to PDF, using estimation: ${estimated} slides`);
+        return estimated;
       }
 
       // Count pages from converted PDF using pdf-parse (version 1.1.1) (each slide = 1 page)
