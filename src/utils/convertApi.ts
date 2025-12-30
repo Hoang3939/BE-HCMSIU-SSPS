@@ -61,8 +61,8 @@ export async function convertToPdfWithConvertAPI(
       throw new Error(`ConvertAPI error: ${response.status}`);
     }
 
-    // ConvertAPI returns JSON with Files array
-    const result = await response.json();
+    // ConvertAPI returns JSON với trường Files
+    const result = (await response.json()) as { Files?: Array<{ Url: string }> };
     
     if (!result.Files || !result.Files[0] || !result.Files[0].Url) {
       console.error('[ConvertAPI] Invalid response format:', result);

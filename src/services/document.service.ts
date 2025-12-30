@@ -297,8 +297,21 @@ export class DocumentService {
       };
     }
 
-    // For other formats, convert to PDF using ConvertAPI (preferred) or LibreOffice (fallback)
+    // For other formats, convert to PDF using ConvertAPI (preferred) hoặc LibreOffice (fallback)
     try {
+      // Map extension -> MIME type (tương tự logic trong getDocument)
+      const mimeTypeMap: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.txt': 'text/plain',
+      };
+      const mimeType = mimeTypeMap[fileExt] || 'application/octet-stream';
+
       const convertedPdfPath = await convertToPdfWithFallback(filePath, mimeType);
       if (!convertedPdfPath || !fs.existsSync(convertedPdfPath)) {
         throw new InternalServerError('Không thể tạo file PDF sau khi convert. Vui lòng kiểm tra cấu hình ConvertAPI hoặc cài đặt LibreOffice.');
