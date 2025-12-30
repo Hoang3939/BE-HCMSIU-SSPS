@@ -19,6 +19,7 @@ export class HistoryController {
   static getTransactionHistory = asyncHandler(
     async (req: Request, res: Response) => {
       if (!req.auth || !req.auth.userID) {
+        console.warn('[HistoryController] Unauthorized request - no auth or userID');
         return res.status(401).json({
           success: false,
           message: 'Unauthorized',
@@ -26,7 +27,11 @@ export class HistoryController {
       }
 
       const studentId = req.auth.userID;
+      console.log('[HistoryController] Getting transaction history for userID:', studentId);
+      
       const transactions = await HistoryService.getTransactionHistory(studentId);
+      
+      console.log('[HistoryController] Returning transactions:', transactions.length);
 
       const response: TransactionHistoryResponse = {
         success: true,

@@ -21,7 +21,13 @@ export class HistoryService {
     studentId: string
   ): Promise<TransactionHistoryItem[]> {
     try {
+      console.log('[HistoryService] Getting transaction history for studentId:', studentId);
+      
       const pool = await getPool();
+      if (!pool) {
+        throw new InternalServerError('Database connection not available');
+      }
+      
       const result = await pool
         .request()
         .input('studentId', sql.UniqueIdentifier, studentId)
@@ -38,6 +44,15 @@ export class HistoryService {
           WHERE StudentID = @studentId
           ORDER BY Date DESC
         `);
+
+      console.log('[HistoryService] Found transactions:', result.recordset.length);
+      if (result.recordset.length > 0) {
+        console.log('[HistoryService] Sample transaction:', {
+          transID: result.recordset[0].TransID,
+          status: result.recordset[0].Status,
+          date: result.recordset[0].Date,
+        });
+      }
 
       return result.recordset.map((row) => ({
         transID: row.TransID,
