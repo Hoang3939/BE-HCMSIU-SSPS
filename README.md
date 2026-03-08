@@ -1,55 +1,96 @@
-# BE-HCMSIU-SSPS  
-**Smart Printing Service Backend**
+# BE-HCMSIU-SSPS
 
-Backend cho **Hệ thống Dịch vụ In ấn Thông minh tại HCMIU**.  
-Dự án được xây dựng trên **Node.js + TypeScript**, áp dụng kiến trúc hiện đại, hỗ trợ **ES Modules** và **tài liệu API tự động (Swagger / OpenAPI)**.
+Backend cho hệ thống **Smart Student Printing Service (SSPS)** tại HCMIU.
 
----
-
-## 🚀 Công nghệ sử dụng
-
-- **Runtime:** Node.js (v18+)
-- **Ngôn ngữ:** TypeScript (v5+)
-- **Framework:** Express.js (v5+)
-- **API Documentation:** Swagger UI & JSDoc (OpenAPI 3.0)
-- **Thực thi & Watch mode:** `tsx`
-- **Bảo mật:** CORS
-- **Cấu hình môi trường:** dotenv
+- **Stack:** Node.js + Express + TypeScript
+- **Database:** SQL Server (`mssql`)
+- **Auth:** JWT + Session model
+- **Mail:** Nodemailer
+- **File upload:** Multer
+- **API docs:** Swagger (`/api-docs`)
 
 ---
 
-## 🛠 Hướng dẫn thiết lập cho Thành viên Team
+## 1) Cấu trúc dự án
 
-### 1️⃣ Cấu hình quyền thực thi (Windows)
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```text
+BE-HCMSIU-SSPS/
+├─ src/
+│  ├─ config/                 # cấu hình DB
+│  ├─ controllers/            # xử lý request/response
+│  ├─ errors/                 # AppError, error abstraction
+│  ├─ middleware/             # auth, validation, error handler, async handler
+│  ├─ models/                 # User, Session, OTP, ...
+│  ├─ routes/                 # định tuyến API
+│  ├─ services/               # business logic
+│  ├─ types/                  # type definitions
+│  ├─ utils/                  # utility functions
+│  └─ index.ts                # entrypoint
+├─ scripts/                   # script generate env/seed/jwt secret
+├─ uploads/                   # file upload runtime
+├─ package.json
+├─ tsconfig.json
+└─ README.md
 ```
 
-### 2️⃣ Cài đặt Dependencies
+---
+
+## 2) Yêu cầu môi trường
+
+- Node.js 18+
+- npm 9+
+- SQL Server
+
+---
+
+## 3) Cài đặt
+
 ```bash
 npm install
 ```
 
-### 3️⃣ Cấu hình biến môi trường
+---
+
+## 4) Cấu hình biến môi trường
+
+Có thể tạo nhanh bằng script:
+
 ```bash
-cp .env.example .env
+npm run generate-env
 ```
+
+Hoặc tự tạo `.env` theo nhu cầu. Một số biến quan trọng:
 
 ```env
 PORT=3000
 NODE_ENV=development
+DB_HOST=localhost
+DB_PORT=1433
+DB_USER=sa
+DB_PASSWORD=your_password
+DB_NAME=SSPS
+JWT_ACCESS_SECRET=your_access_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+```
+
+Nếu cần xoay secret JWT:
+
+```bash
+npm run update-jwt-secrets
 ```
 
 ---
 
-## 🏃 Quy trình vận hành
+## 5) Chạy dự án
 
 ### Development
+
 ```bash
 npm run dev
 ```
 
-### Production
+### Build + Production
+
 ```bash
 npm run build
 npm run start
@@ -57,25 +98,26 @@ npm run start
 
 ---
 
-## 📖 Swagger API
+## 6) API Documentation
+
+Sau khi chạy server, truy cập:
+
 ```text
 http://localhost:3000/api-docs
 ```
 
 ---
 
-## 📁 Cấu trúc thư mục
-```text
-src/
-dist/
-.env
-tsconfig.json
-```
+## 7) Scripts tiện ích
+
+- `npm run generate-env`: tạo file `.env` mẫu
+- `npm run update-jwt-secrets`: cập nhật JWT secrets
+- `npm run generate-seed-data`: tạo dữ liệu seed
 
 ---
 
-## ⚠️ Troubleshooting
+## 8) Ghi chú vận hành
 
-- **EJSONPARSE:** `npm init -y`
-- **TypeScript compile lỗi:** kiểm tra `tsx` và `"type": "module"`
-- **Swagger YAML lỗi:** kiểm tra indent và key trùng
+- Không commit `.env` thật hoặc secret production.
+- Thư mục `uploads/` là dữ liệu runtime.
+- Khi đổi schema/database, cần đồng bộ scripts và model/service liên quan.

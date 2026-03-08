@@ -1,0 +1,388 @@
+name: Deploy Backend
+ 
+on:
+  push:
+    branches: ["develop"]
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, backend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify Node.js and npm versions
+        run: |
+          node --version
+          npm --version
+          echo ""
+          echo "LƯU Ý: Nếu cần nâng cấp Node.js lên version 22, hãy chạy lệnh sau một lần duy nhất trên terminal của server:"
+          echo "   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs"
+
+      - name: Check for .env file
+        id: check-env
+        run: |
+          if [ -f .env ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "File .env đã tồn tại"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "File .env không tồn tại - cần tạo từ secrets hoặc script"
+          fi
+
+      - name: Create/Update .env from secrets
+        run: |
+          echo "Tạo/cập nhật file .env từ GitHub Secrets..."
+          echo "=========================================="
+          echo "LƯU Ý VỀ CLOUDFLARE TUNNEL:"
+          echo "  - Frontend: https://ssps.acdm.site -> tunnel -> localhost:3000"
+          echo "  - Backend: https://api.acdm.site -> tunnel -> localhost:3001"
+          echo "  - FRONTEND_URL phải là URL public: https://ssps.acdm.site"
+          echo "  - KHÔNG dùng localhost vì CORS sẽ chặn cross-origin requests"
+          echo "=========================================="
+          echo "Đảm bảo đã cấu hình GitHub Secrets:"
+          echo "  - FRONTEND_URL=https://ssps.acdm.site (URL public qua Cloudflare Tunnel)"
+          echo "  - NEXT_PUBLIC_API_BASE_URL=https://api.acdm.site (cho FE workflow)"
+          cat > .env << EOF
+          # Database Configuration
+          DB_SERVER=${{ secrets.DB_SERVER }}
+          DB_DATABASE=${{ secrets.DB_DATABASE }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_PORT=${{ secrets.DB_PORT || '1433' }}
+          DB_ENCRYPT=${{ secrets.DB_ENCRYPT || 'false' }}
+          DB_TRUST_SERVER_CERTIFICATE=${{ secrets.DB_TRUST_SERVER_CERTIFICATE || 'true' }}
+          DB_CONNECTION_TIMEOUT=${{ secrets.DB_CONNECTION_TIMEOUT || '60000' }}
+          DB_REQUEST_TIMEOUT=${{ secrets.DB_REQUEST_TIMEOUT || '30000' }}
+
+                 # Server Configuration
+                 PORT=${{ secrets.PORT || '3001' }}
+                 NODE_ENV=${{ secrets.NODE_ENV || 'production' }}
+                 # LƯU Ý: Khi sử dụng Cloudflare Tunnel:
+                 # - Frontend: https://ssps.acdm.site -> tunnel -> localhost:3000
+                 # - Backend: https://api.acdm.site -> tunnel -> localhost:3001
+                 # FRONTEND_URL phải là URL public qua Cloudflare Tunnel (https://ssps.acdm.site)
+                 # Để CORS cho phép requests từ frontend domain
+                 FRONTEND_URL=${{ secrets.FRONTEND_URL || 'https://ssps.acdm.site' }}
+
+          # JWT Configuration
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_ACCESS_EXPIRES_IN=${{ secrets.JWT_ACCESS_EXPIRES_IN || '15m' }}
+          JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '7d' }}
+
+          # Bcrypt Configuration
+          BCRYPT_SALT_ROUNDS=${{ secrets.BCRYPT_SALT_ROUNDS || '10' }}
+
+          # Email Configuration (Optional - for password reset)
+          EMAIL_SERVICE=${{ secrets.EMAIL_SERVICE || 'gmail' }}
+          EMAIL_USER=${{ secrets.EMAIL_USER || '' }}
+          EMAIL_PASS=${{ secrets.EMAIL_PASS || '' }}
+
+          # Payment Configuration (Optional - for Sepay integration)
+          BANK_ID=${{ secrets.BANK_ID || 'BIDV' }}
+          ACCOUNT_NO=${{ secrets.ACCOUNT_NO || '96247SSPS' }}
+          TEMPLATE=${{ secrets.TEMPLATE || 'compact2' }}
+          SEPAY_API_KEY=${{ secrets.SEPAY_API_KEY || '' }}
+
+          # HCMSIU SSO Configuration (Optional - for future SSO integration)
+          # SSO_URL=${{ secrets.SSO_URL || '' }}
+          # SSO_API_KEY=${{ secrets.SSO_API_KEY || '' }}
+          EOF
+          echo "File .env đã được tạo từ secrets"
+
+      - name: Verify required environment variables
+        run: |
+          echo "Kiểm tra các biến môi trường bắt buộc..."
+          if [ ! -f .env ]; then
+            echo "File .env không tồn tại!"
+            exit 1
+          fi
+          
+          # Đọc và kiểm tra các biến bắt buộc từ file .env
+          # Các biến bắt buộc: Database và JWT secrets
+          required_vars=("DB_SERVER" "DB_DATABASE" "DB_USER" "DB_PASSWORD" "JWT_SECRET" "JWT_REFRESH_SECRET")
+          # Các biến tùy chọn nhưng nên có: FRONTEND_URL (cho CORS)
+          recommended_vars=("FRONTEND_URL")
+          missing_vars=()
+          missing_recommended=()
+          
+          for var in "${required_vars[@]}"; do
+            # Tìm biến trong file .env (bỏ qua comment và dòng trống)
+            if ! grep -q "^${var}=" .env 2>/dev/null; then
+              missing_vars+=("$var")
+            else
+              # Kiểm tra giá trị không rỗng
+              value=$(grep "^${var}=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -z "$value" ]; then
+                missing_vars+=("$var")
+              fi
+            fi
+          done
+          
+          # Kiểm tra các biến được khuyến nghị
+          for var in "${recommended_vars[@]}"; do
+            if ! grep -q "^${var}=" .env 2>/dev/null; then
+              missing_recommended+=("$var")
+            else
+              value=$(grep "^${var}=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -z "$value" ]; then
+                missing_recommended+=("$var")
+              fi
+            fi
+          done
+          
+          if [ ${#missing_vars[@]} -gt 0 ]; then
+            echo "Thiếu hoặc rỗng các biến môi trường bắt buộc: ${missing_vars[*]}"
+            echo "Vui lòng kiểm tra file .env hoặc GitHub Secrets"
+            exit 1
+          fi
+          
+          if [ ${#missing_recommended[@]} -gt 0 ]; then
+            echo "Cảnh báo: Thiếu các biến môi trường được khuyến nghị: ${missing_recommended[*]}"
+            echo "CORS có thể không hoạt động đúng nếu thiếu FRONTEND_URL"
+          fi
+          
+          echo "Tất cả biến môi trường bắt buộc đã được cấu hình"
+
+      - name: Clean previous build
+        run: |
+          echo "Dọn dẹp thư mục build cũ..."
+          if [ -d "dist" ]; then
+            rm -rf dist
+            echo "Đã xóa thư mục dist cũ"
+          fi
+          # Xóa node_modules để đảm bảo cài đặt lại sạch sẽ
+          if [ -d "node_modules" ]; then
+            rm -rf node_modules
+            echo "Đã xóa node_modules cũ"
+          fi
+
+      - name: Install Dependencies
+        run: |
+          echo "Cài đặt dependencies..."
+          
+          # Đảm bảo npm cache sạch sẽ
+          npm cache clean --force || true
+          
+          # Kiểm tra package-lock.json và sync với package.json
+          if [ -f "package-lock.json" ]; then
+            echo "Tìm thấy package-lock.json, thử npm ci..."
+            # Thử npm ci trước, nếu fail thì dùng npm install để sync lock file
+            if ! npm ci --production=false --legacy-peer-deps 2>&1 | tee /tmp/npm-ci.log; then
+              echo "⚠️  npm ci failed, package-lock.json không sync với package.json"
+              echo "Cập nhật package-lock.json bằng npm install..."
+              npm install --production=false --legacy-peer-deps
+            else
+              echo "✅ npm ci thành công"
+            fi
+          else
+            echo "Không tìm thấy package-lock.json, sử dụng npm install..."
+            npm install --production=false --legacy-peer-deps
+          fi
+          
+          # Kiểm tra các dependencies quan trọng
+          echo "Kiểm tra các dependencies quan trọng..."
+          required_deps=("express" "body-parser" "iconv-lite" "raw-body")
+          missing_deps=()
+          for dep in "${required_deps[@]}"; do
+            if [ ! -d "node_modules/$dep" ]; then
+              echo "⚠️  $dep chưa được cài đặt"
+              missing_deps+=("$dep")
+            else
+              echo "✅ $dep đã được cài đặt"
+            fi
+          done
+          
+          # Cài đặt các dependencies còn thiếu
+          if [ ${#missing_deps[@]} -gt 0 ]; then
+            echo "Cài đặt các dependencies còn thiếu: ${missing_deps[*]}"
+            npm install "${missing_deps[@]}" --save --legacy-peer-deps
+          fi
+          
+          echo "Dependencies đã được cài đặt"
+
+      - name: Build TypeScript
+        run: |
+          echo "Build TypeScript..."
+          npm run build
+          
+          if [ ! -f "dist/index.js" ]; then
+            echo "Build thất bại: dist/index.js không tồn tại"
+            exit 1
+          fi
+          
+          echo "Build thành công"
+
+      - name: Verify build output
+        run: |
+          echo "Kiểm tra kết quả build..."
+          if [ -d "dist" ]; then
+            echo "Nội dung thư mục dist:"
+            ls -la dist/ | head -20
+            echo ""
+            echo "Build output hợp lệ"
+          else
+            echo "Thư mục dist không tồn tại"
+            exit 1
+          fi
+
+      - name: Start/Restart Backend with PM2
+        run: |
+          echo "Khởi động/restart backend với PM2..."
+          # Dùng restart để giữ nguyên ID và cấu hình, chỉ cập nhật code mới
+          # Nếu process chưa tồn tại thì start mới
+          pm2 restart backend-api --update-env || pm2 start dist/index.js --name "backend-api" --update-env
+          pm2 save
+          echo "Backend đã được khởi động/restart"
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Đợi server khởi động..."
+          
+          # Đảm bảo đang ở đúng thư mục project
+          cd "${{ github.workspace }}"
+          pwd
+          
+          # Kiểm tra PM2 process trước
+          echo "Kiểm tra PM2 process..."
+          pm2 status || echo "PM2 status check failed"
+          
+          # Đợi PM2 process khởi động hoàn toàn (PM2 restart có thể mất thời gian)
+          echo "Đợi 15 giây để PM2 process khởi động hoàn toàn..."
+          sleep 15
+          
+          # Đọc PORT từ .env hoặc dùng mặc định
+          port="3001"
+          if [ -f .env ]; then
+            env_port=$(grep "^PORT=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null || echo "")
+            if [ -n "$env_port" ] && [ "$env_port" != "" ]; then
+              port="$env_port"
+            fi
+          fi
+          
+          echo "Sử dụng port: $port"
+          echo "Kiểm tra server tại http://localhost:$port/health..."
+          
+          max_attempts=40
+          attempt=0
+          success=false
+          
+          while [ $attempt -lt $max_attempts ]; do
+            # Kiểm tra PM2 process status (không dùng jq, dùng pm2 status trực tiếp)
+            pm2_status_output=$(pm2 status | grep "backend-api" || echo "")
+            if [ -z "$pm2_status_output" ]; then
+              echo "   PM2 process backend-api không tìm thấy, đợi thêm..."
+              attempt=$((attempt + 1))
+              sleep 2
+              continue
+            fi
+            
+            # Kiểm tra xem process có online không (từ pm2 status output)
+            if echo "$pm2_status_output" | grep -q "online"; then
+              # Process đang online, thử kết nối đến health endpoint
+              if curl -f -s -m 5 http://localhost:$port/health > /dev/null 2>&1; then
+                echo "✅ Server đã sẵn sàng tại port $port!"
+                success=true
+                break
+              fi
+            else
+              echo "   PM2 process chưa online, đợi thêm..."
+            fi
+            
+            attempt=$((attempt + 1))
+            echo "   Thử lại lần $attempt/$max_attempts..."
+            sleep 2
+          done
+          
+          if [ "$success" = "false" ]; then
+            echo "❌ Server chưa phản hồi sau $max_attempts lần thử"
+            echo ""
+            echo "Trạng thái PM2:"
+            pm2 status
+            echo ""
+            echo "PM2 info backend-api:"
+            pm2 info backend-api || true
+            echo ""
+            echo "PM2 logs (50 dòng cuối):"
+            pm2 logs backend-api --lines 50 --nostream || true
+            echo ""
+            echo "Thử kiểm tra port $port thủ công:"
+            curl -v http://localhost:$port/health || echo "curl failed"
+            echo ""
+            echo "Kiểm tra process đang listen trên port $port:"
+            netstat -tlnp | grep ":$port" || ss -tlnp | grep ":$port" || echo "Không tìm thấy process nào listen trên port $port"
+            exit 1
+          fi
+
+      - name: Health check
+        run: |
+          echo "Kiểm tra health endpoint..."
+          
+          # Đảm bảo đang ở đúng thư mục project
+          cd "${{ github.workspace }}"
+          
+          # Đọc PORT từ .env hoặc dùng mặc định
+          port="3001"
+          if [ -f .env ]; then
+            env_port=$(grep "^PORT=" .env | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null || echo "")
+            if [ -n "$env_port" ] && [ "$env_port" != "" ]; then
+              port="$env_port"
+            fi
+          fi
+          
+          echo "Kiểm tra health endpoint tại http://localhost:$port/health..."
+          
+          # Thử kết nối với timeout và lưu response
+          response=$(curl -s -m 10 -w "\nHTTP_CODE:%{http_code}" http://localhost:$port/health 2>&1 || echo "ERROR")
+          http_code=$(echo "$response" | grep "HTTP_CODE" | cut -d':' -f2 || echo "")
+          response_body=$(echo "$response" | grep -v "HTTP_CODE" || echo "")
+          
+          if [ "$response" = "ERROR" ] || [ -z "$http_code" ] || [ "$http_code" != "200" ]; then
+            echo "❌ Health check thất bại tại port $port"
+            echo "HTTP Code: $http_code"
+            echo "Response: $response_body"
+            echo ""
+            echo "PM2 status:"
+            pm2 status
+            echo ""
+            echo "PM2 logs (20 dòng cuối):"
+            pm2 logs backend-api --lines 20 --nostream || true
+            exit 1
+          fi
+          
+          echo "✅ Health check response (HTTP $http_code):"
+          echo "$response_body" | head -10
+          echo ""
+          echo "✅ Health check thành công"
+
+      - name: Show PM2 status
+        run: |
+          echo "Trạng thái PM2:"
+          pm2 status
+          echo ""
+          echo "PM2 info:"
+          pm2 info backend-api
+
+      - name: Deployment summary
+        run: |
+          echo ""
+          echo "═══════════════════════════════════════════════════════════"
+          echo "DEPLOYMENT THÀNH CÔNG!"
+          echo "═══════════════════════════════════════════════════════════"
+          echo "Application: backend-api"
+          echo "Status: Running"
+          echo "Build: dist/index.js"
+          echo "Process Manager: PM2"
+          echo ""
+          echo "Để xem logs: pm2 logs backend-api"
+          echo "Để restart: pm2 restart backend-api"
+          echo "Để stop: pm2 stop backend-api"
+          echo "═══════════════════════════════════════════════════════════"
